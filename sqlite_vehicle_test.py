@@ -3,6 +3,10 @@ import struct
 import subprocess
 import time
 
+SOL_CAN_ISOTP = getattr(socket, "SOL_CAN_ISOTP", 106)
+CAN_ISOTP_OPTS = getattr(socket, "CAN_ISOTP_OPTS", 1)
+CAN_ISOTP_TX_PADDING = getattr(socket, "CAN_ISOTP_TX_PADDING", 0x0004)
+
 from database.database import (
     get_vehicles,
     get_parameters
@@ -68,31 +72,28 @@ def create_isotp_socket(parameter):
         socket.CAN_ISOTP
     )
 
-    # Falls Padding in der Datenbank gesetzt ist
     if parameter["tx_padding"] is not None:
 
-        flags = socket.CAN_ISOTP_TX_PADDING
+        flags = CAN_ISOTP_TX_PADDING
 
         options = struct.pack(
             "=IIBBBB",
-            flags,                      # flags
-            0,                          # frame_txtime
-            0,                          # ext_address
-            parameter["tx_padding"],    # txpad_content
-            0,                          # rxpad_content
-            0                           # rx_ext_address
+            flags,
+            0,
+            0,
+            parameter["tx_padding"],
+            0,
+            0
         )
 
         sock.setsockopt(
-            socket.SOL_CAN_ISOTP,
-            socket.CAN_ISOTP_OPTS,
+            SOL_CAN_ISOTP,
+            CAN_ISOTP_OPTS,
             options
         )
 
     sock.settimeout(TIMEOUT)
 
-    # Python erwartet:
-    # (interface, RX-ID, TX-ID)
     sock.bind((
         parameter["channel"],
         parameter["response_id"],
