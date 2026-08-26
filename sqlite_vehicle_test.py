@@ -1,6 +1,7 @@
-import can
-import time
+import socket
+import struct
 import subprocess
+import time
 
 from database.database import (
     get_vehicles,
@@ -11,53 +12,24 @@ from decoder import decode_parameter
 
 
 INTERVAL = 0.5
+TIMEOUT = 0.5
 
-def select_parameter(vehicle_id):
-    parameters = get_parameters(vehicle_id)
-
-    if not parameters:
-        raise RuntimeError(
-            "Für dieses Fahrzeug sind keine "
-            "Diagnoseparameter hinterlegt."
-        )
-
-    print()
-    print("Verfügbare Diagnoseparameter:")
-    print()
-
-    for index, parameter in enumerate(
-        parameters,
-        start=1
-    ):
-        print(
-            f"{index}: "
-            f"{parameter['name']} "
-            f"(DID 0x{parameter['did']:04X})"
-        )
-
-    print()
-
-    while True:
-        try:
-            selection = int(
-                input("Diagnoseparameter auswählen: ")
-            )
-        except ValueError:
-            print("Bitte eine Zahl eingeben.")
-            continue
-
-        if 1 <= selection <= len(parameters):
-            return parameters[selection - 1]
-
-        print("Ungültige Auswahl.")
 
 def configure_can(channel, bitrate):
     print(
-        f"Konfiguriere {channel} mit {bitrate} bit/s ..."
+        f"Konfiguriere {channel} mit "
+        f"{bitrate} bit/s ..."
     )
 
     subprocess.run(
-        ["sudo", "ip", "link", "set", channel, "down"],
+        [
+            "sudo",
+            "ip",
+            "link",
+            "set",
+            channel,
+            "down"
+        ],
         check=False
     )
 
@@ -77,108 +49,78 @@ def configure_can(channel, bitrate):
     )
 
     subprocess.run(
-        ["sudo", "ip", "link", "set", channel, "up"],
+        [
+            "sudo",
+            "ip",
+            "link",
+            "set",
+            channel,
+            "up"
+        ],
         check=True
     )
 
-    print(f"{channel} ist aktiv.")
 
-def build_read_did_request(parameter_config):
-    service = parameter_config["service"]
-    did = parameter_config["did"]
+def create_isotp_socket(parameter):
+    sock = socket.socket(
+        socket.AF_CAN,
+        socket.SOCK_DGRAM,
+        socket.CAN_ISOTP
+    )
 
-    did_high = (did >> 8) & 0xFF
-    did_low = did & 0xFF
+    # Falls Padding in der Datenbank gesetzt ist
+    if parameter["tx_padding"] is not None:
 
-    uds_payload = [
+        flags = socket.CAN_ISOTP_TX_PADDING
+
+        options = struct.pack(
+            "=IIBBBB",
+            flags,                      # flags
+            0,                          # frame_txtime
+            0,                          # ext_address
+            parameter["tx_padding"],    # txpad_content
+            0,                          # rxpad_content
+            0                           # rx_ext_address
+        )
+
+        sock.setsockopt(
+            socket.SOL_CAN_ISOTP,
+            socket.CAN_ISOTP_OPTS,
+            options
+        )
+
+    sock.settimeout(TIMEOUT)
+
+    # Python erwartet:
+    # (interface, RX-ID, TX-ID)
+    sock.bind((
+        parameter["channel"],
+        parameter["response_id"],
+        parameter["request_id"]
+    ))
+
+    return sock
+
+
+def read_did(sock, parameter):
+    service = parameter["service"]
+    did = parameter["did"]
+
+    request = bytes([
         service,
-        did_high,
-        did_low
-    ]
+        (did >> 8) & 0xFF,
+        did & 0xFF
+    ])
 
-    # ISO-TP Single Frame
-    frame = [
-        len(uds_payload),
-        *uds_payload
-    ]
+    sock.send(request)
 
-    # auf 8 Byte auffüllen
-    while len(frame) < 8:
-        frame.append(0x00)
-
-    return frame
-
-
-def read_isotp(bus, request_id):
-    first = bus.recv(timeout=0.2)
-
-    if first is None:
-        return None
-
-    # ISO-TP Single Frame
-    if (first.data[0] & 0xF0) == 0x00:
-        length = first.data[0] & 0x0F
-        return bytes(first.data[1:1 + length])
-
-    # ISO-TP First Frame erwartet
-    if (first.data[0] & 0xF0) != 0x10:
-        return None
-
-    length = (
-        ((first.data[0] & 0x0F) << 8)
-        | first.data[1]
-    )
-
-    payload = bytearray(
-        first.data[2:]
-    )
-
-    # Flow Control
-    flow_control = can.Message(
-        arbitration_id=request_id,
-        data=[
-            0x30,
-            0x00,
-            0x00,
-            0x00,
-            0x00,
-            0x00,
-            0x00,
-            0x00
-        ],
-        is_extended_id=False
-    )
-
-    bus.send(flow_control)
-
-    while len(payload) < length:
-        frame = bus.recv(timeout=0.2)
-
-        if frame is None:
-            return None
-
-        # Consecutive Frame
-        if (frame.data[0] & 0xF0) == 0x20:
-            payload.extend(
-                frame.data[1:]
-            )
-
-    return bytes(
-        payload[:length]
-    )
+    return sock.recv(4095)
 
 
 def select_vehicle():
     vehicles = get_vehicles()
 
-    if not vehicles:
-        raise RuntimeError(
-            "Keine Fahrzeuge in der Datenbank."
-        )
-
-    print()
-    print("Verfügbare Fahrzeuge:")
-    print()
+    print("\nVerfügbare Fahrzeuge:\n")
 
     for vehicle in vehicles:
         print(
@@ -188,15 +130,12 @@ def select_vehicle():
             f"{vehicle['generation'] or ''}"
         )
 
-    print()
-
     while True:
         try:
             vehicle_id = int(
-                input("Fahrzeug-ID auswählen: ")
+                input("\nFahrzeug-ID auswählen: ")
             )
         except ValueError:
-            print("Bitte eine Zahl eingeben.")
             continue
 
         for vehicle in vehicles:
@@ -206,130 +145,191 @@ def select_vehicle():
         print("Ungültige Fahrzeug-ID.")
 
 
+def select_parameter(vehicle_id):
+    parameters = get_parameters(vehicle_id)
+
+    print("\nVerfügbare Diagnoseparameter:\n")
+
+    for index, parameter in enumerate(
+        parameters,
+        start=1
+    ):
+        print(
+            f"{index}: "
+            f"{parameter['name']} "
+            f"(DID 0x{parameter['did']:04X})"
+        )
+
+    while True:
+        try:
+            selection = int(
+                input(
+                    "\nDiagnoseparameter auswählen: "
+                )
+            )
+        except ValueError:
+            continue
+
+        if 1 <= selection <= len(parameters):
+            return parameters[selection - 1]
+
+        print("Ungültige Auswahl.")
+
+
+def format_values(values):
+    output = []
+
+    for name, item in values.items():
+        value = item["value"]
+        unit = item["unit"]
+
+        if isinstance(value, float):
+            if not unit and value.is_integer():
+                value_text = str(int(value))
+            else:
+                value_text = f"{value:.2f}"
+        else:
+            value_text = str(value)
+
+        if unit:
+            output.append(
+                f"{name}: {value_text} {unit}"
+            )
+        else:
+            output.append(
+                f"{name}: {value_text}"
+            )
+
+    return " | ".join(output)
+
+
 def main():
     vehicle = select_vehicle()
 
     parameter = select_parameter(
-    vehicle["id"]
+        vehicle["id"]
     )
 
-    if parameter is None:
-        raise RuntimeError(
-            "Für dieses Fahrzeug wurde kein "
-            "'radar_target'-Parameter gefunden."
-        )
+    print("\nAusgewähltes Fahrzeug:")
 
-    request_id = parameter["request_id"]
-    response_id = parameter["response_id"]
-
-    request_data = build_read_did_request(
-        parameter
-    )
-
-    print()
-    print("Ausgewähltes Fahrzeug:")
     print(
         f"{vehicle['manufacturer']} "
         f"{vehicle['model']} "
         f"{vehicle['generation'] or ''}"
     )
 
-    print()
-    print("Diagnosekonfiguration:")
+    print("\nDiagnosekonfiguration:")
+
     print(
-        f"CAN-Kanal:        {parameter['channel']}"
+        f"ECU:              "
+        f"{parameter['ecu_name']}"
     )
+
     print(
-        f"Bitrate:          {parameter['bitrate']}"
+        f"Transport:        "
+        f"{parameter['transport']}"
     )
+
     print(
-        f"Request-ID:       0x{request_id:X}"
+        f"CAN-Kanal:        "
+        f"{parameter['channel']}"
     )
+
     print(
-        f"Response-ID:      0x{response_id:X}"
+        f"Bitrate:          "
+        f"{parameter['bitrate']}"
     )
+
     print(
-        f"Service:          0x{parameter['service']:02X}"
+        f"Request-ID:       "
+        f"0x{parameter['request_id']:X}"
     )
+
     print(
-        f"DID:              0x{parameter['did']:04X}"
+        f"Response-ID:      "
+        f"0x{parameter['response_id']:X}"
     )
-    print()
+
+    print(
+        f"Service:          "
+        f"0x{parameter['service']:02X}"
+    )
+
+    print(
+        f"DID:              "
+        f"0x{parameter['did']:04X}"
+    )
 
     configure_can(
-    channel=parameter["channel"],
-    bitrate=parameter["bitrate"]
+        parameter["channel"],
+        parameter["bitrate"]
     )
 
-    bus = can.Bus(
-        interface="socketcan",
-        channel=parameter["channel"],
-        can_filters=[
-            {
-                "can_id": response_id,
-                "can_mask": 0x7FF,
-                "extended": False
-            }
-        ]
+    # Aktuell implementieren wir ISO-TP.
+    # Weitere Transportarten können später
+    # hier ergänzt werden.
+    if parameter["transport"] != "isotp":
+        raise NotImplementedError(
+            "Transport "
+            f"'{parameter['transport']}' "
+            "ist noch nicht implementiert."
+        )
+
+    sock = create_isotp_socket(
+        parameter
     )
+
+    print("\nMessung läuft...\n")
 
     try:
         while True:
             start = time.monotonic()
 
-            request = can.Message(
-                arbitration_id=request_id,
-                data=request_data,
-                is_extended_id=False
-            )
-
-            bus.send(request)
-
-            response = read_isotp(
-                bus=bus,
-                request_id=request_id
-            )
-
-            if response is None:
-                print("Keine Antwort")
-                continue
-
-            expected_header = bytes([
-                parameter["service"] + 0x40,
-                (parameter["did"] >> 8) & 0xFF,
-                parameter["did"] & 0xFF
-            ])
-
-            if not response.startswith(
-                expected_header
-            ):
-                print(
-                    "Unerwartete Antwort:",
-                    response.hex(" ")
+            try:
+                response = read_did(
+                    sock,
+                    parameter
                 )
-                continue
 
-            values = decode_parameter(
-                response,
-                parameter
-            )
+                # Negative UDS Response
+                if (
+                    len(response) >= 3
+                    and response[0] == 0x7F
+                ):
+                    print(
+                        "Negative UDS-Antwort:",
+                        response.hex(" ")
+                    )
 
-            print(
-                f"Status: "
-                f"{values['status']['value']} | "
-                f"Abstand: "
-                f"{values['distance']['value']:6.2f} "
-                f"{values['distance']['unit']} | "
-                f"v_rel: "
-                f"{values['relative_speed']['value']:7.2f} "
-                f"{values['relative_speed']['unit']} | "
-                f"Winkel: "
-                f"{values['angle']['value']:7.2f} "
-                f"{values['angle']['unit']} | "
-                f"a_rel: "
-                f"{values['relative_acceleration']['value']:7.2f} "
-                f"{values['relative_acceleration']['unit']}"
-            )
+                else:
+                    expected_header = bytes([
+                        parameter["service"] + 0x40,
+                        (
+                            parameter["did"] >> 8
+                        ) & 0xFF,
+                        parameter["did"] & 0xFF
+                    ])
+
+                    if response.startswith(
+                        expected_header
+                    ):
+                        values = decode_parameter(
+                            response,
+                            parameter
+                        )
+
+                        print(
+                            format_values(values)
+                        )
+
+                    else:
+                        print(
+                            "Unerwartete Antwort:",
+                            response.hex(" ")
+                        )
+
+            except socket.timeout:
+                print("Keine Antwort")
 
             elapsed = (
                 time.monotonic() - start
@@ -346,7 +346,7 @@ def main():
         print("\nMessung beendet")
 
     finally:
-        bus.shutdown()
+        sock.close()
 
 
 if __name__ == "__main__":

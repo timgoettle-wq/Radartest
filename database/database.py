@@ -74,10 +74,12 @@ def get_parameters(vehicle_id):
 
             e.name AS ecu_name,
             e.interface,
+            e.transport,
             e.channel,
             e.bitrate,
             e.request_id,
-            e.response_id
+            e.response_id,
+            e.tx_padding
 
         FROM diagnostic_parameters dp
 
