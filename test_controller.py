@@ -26,6 +26,11 @@ class TestController:
 
         self.connected = False
 
+        self.precheck_done = False
+        self.polarization = None
+        self.frequency_range = None
+        self.power = None
+
 
     def connect(self):
         self.vehicle.connect()
@@ -49,35 +54,67 @@ class TestController:
         self.connected = False
 
 
-    def set_distance(self, distance_m):
+    def run_precheck(self):
         if not self.connected:
             raise RuntimeError(
                 "Testsystem nicht verbunden"
             )
 
-        self.requested_distance = distance_m
+        print("\n--- RadEsT Precheck ---")
 
-        self.radest.target_set_distance(
-            distance_m
+        # 1. Polarisation bestimmen
+        print("Polarisation wird bestimmt...")
+
+        self.polarization = (
+            self.radest.measure_get_polarization_77ghz()
         )
 
-        # tatsächlich realisierten Wert holen
-        self.realized_distance = (
-            self.radest.target_get_distance()
+        print(
+            f"Erkannte Polarisation: "
+            f"{self.polarization}"
         )
 
-        return self.realized_distance
-
-
-    def set_rcs(self, rcs_dbsm):
-        if not self.connected:
-            raise RuntimeError(
-                "Testsystem nicht verbunden"
-            )
-
-        self.radest.target_set_rcs(
-            rcs_dbsm
+        # Erkannte Polarisation direkt einstellen
+        self.radest.system_set_polarization_77ghz(
+            self.polarization
         )
+
+        print(
+            f"Polarisation eingestellt: "
+            f"{self.polarization}"
+        )
+
+        # 2. Frequenzbereich bestimmen
+        print("Frequenzbereich wird bestimmt...")
+
+        self.frequency_range = (
+            self.radest.measure_get_frequencyrange()
+        )
+
+        print(
+            f"Frequenzbereich: "
+            f"{self.frequency_range}"
+        )
+
+        # 3. Leistung messen
+        print("Leistung wird gemessen...")
+
+        self.power = (
+            self.radest.measure_get_77ghz_eirp()
+        )
+
+        print(
+            f"Gemessene Leistung: "
+            f"{self.power}"
+        )
+
+        self.precheck_done = True
+
+        return {
+            "polarization": self.polarization,
+            "frequency_range": self.frequency_range,
+            "power": self.power
+        }
 
 
     def set_velocity(
