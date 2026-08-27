@@ -1,3 +1,4 @@
+from curses import raw
 import struct
 
 
@@ -19,6 +20,9 @@ def decode_value(data: bytes, field: dict):
 
     elif data_type == "uint16_be":
         return int.from_bytes(raw, byteorder="big", signed=False)
+
+    elif data_type == "int8":
+        return int.from_bytes(raw, byteorder="big", signed=True)
 
     elif data_type == "uint16_le":
         return int.from_bytes(raw, byteorder="little", signed=False)
