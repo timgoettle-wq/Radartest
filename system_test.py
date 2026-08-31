@@ -171,18 +171,6 @@ def run_radest_precheck(radest):
         f"{polarization}"
     )
 
-    print(
-        "   Polarisation wird eingestellt..."
-    )
-
-    radest.system_set_polarization_77ghz(
-        polarization
-    )
-
-    print(
-        f"   Eingestellt: {polarization}"
-    )
-
     # ----------------------------------------------
     # 2. Frequenzbereich
     # ----------------------------------------------
