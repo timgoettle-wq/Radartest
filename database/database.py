@@ -2,11 +2,11 @@ import sqlite3
 from pathlib import Path
 
 
-DB_FILE = Path(__file__).parent / "radar_test.db"
+DB_PATH = Path(__file__).parent / "radar_test.db"
 
 
 def get_connection():
-    connection = sqlite3.connect(DB_FILE)
+    connection = sqlite3.connect(DB_PATH)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
 
@@ -14,32 +14,24 @@ def get_connection():
 
 
 def get_vehicles():
-    connection = get_connection()
+    connection = sqlite3.connect(DB_PATH)
+    connection.row_factory = sqlite3.Row
 
-    rows = connection.execute("""
-        SELECT
-            id,
-            manufacturer,
-            model,
-            generation,
-            year_from,
-            year_to,
-            description
+    cursor = connection.cursor()
 
-        FROM vehicles
+    cursor.execute(
+        "SELECT * FROM vehicles ORDER BY id"
+    )
 
-        ORDER BY
-            manufacturer,
-            model,
-            generation
-    """).fetchall()
+    vehicles = [
+        dict(row)
+        for row in cursor.fetchall()
+    ]
 
     connection.close()
 
-    return [
-        dict(row)
-        for row in rows
-    ]
+    return vehicles
+    
 
 
 def get_vehicle(vehicle_id):
