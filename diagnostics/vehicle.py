@@ -2,11 +2,17 @@ import socket
 import struct
 import subprocess
 
-from database.database import get_parameters
+from database.database import (
+    get_parameters,
+    get_dtc_configs,
+)
 from decoder import decode_parameter
 
 
+# ==================================================
 # Linux ISO-TP Konstanten
+# ==================================================
+
 SOL_CAN_ISOTP = getattr(
     socket,
     "SOL_CAN_ISOTP",
@@ -28,139 +34,254 @@ CAN_ISOTP_TX_PADDING = getattr(
 
 class VehicleDiagnostic:
 
-    def __init__(self, vehicle_id):
+    def __init__(
+        self,
+        vehicle_id
+    ):
+
         self.vehicle_id = vehicle_id
 
-        # Alle Diagnoseparameter des Fahrzeugs laden
-        self.parameters = get_parameters(vehicle_id)
+
+        # ==================================================
+        # Normale Diagnoseparameter
+        # ==================================================
+
+        self.parameters = get_parameters(
+            vehicle_id
+        )
+
 
         if not self.parameters:
+
             raise ValueError(
                 f"Keine Diagnoseparameter für "
-                f"vehicle_id={vehicle_id} gefunden"
+                f"Fahrzeug {vehicle_id} gefunden"
             )
 
-        # ISO-TP-Sockets
-        # Key:
-        # (channel, request_id, response_id)
+
+        # ==================================================
+        # DTC-Konfiguration
+        #
+        # Darf leer sein.
+        # Fahrzeug kann also auch ohne DTC-Konfiguration
+        # weiterhin normal funktionieren.
+        # ==================================================
+
+        self.dtc_configs = get_dtc_configs(
+            vehicle_id
+        )
+
+
+        # ==================================================
+        # ISO-TP Sockets
+        # ==================================================
+
         self.sockets = {}
 
-        # Zuordnung:
-        # Signalname -> Diagnoseparameter
-        #
-        # Beispiel Mercedes:
-        # distance       -> DID 0x0201
-        # angle          -> DID 0x0201
-        # relative_speed -> DID 0x0201
-        #
-        # Beispiel anderes Fahrzeug:
-        # distance       -> DID A
-        # angle          -> DID B
-        # relative_speed -> DID C
+
+        # ==================================================
+        # Signal -> Parameter Zuordnung
+        # ==================================================
+
         self.signal_map = {}
+
 
         self._build_signal_map()
 
 
+    # ==================================================
+    # SIGNAL MAP AUFBAUEN
+    # ==================================================
+
     def _build_signal_map(self):
+
         for parameter in self.parameters:
 
-            for field in parameter["fields"]:
+            fields = parameter.get(
+                "fields",
+                []
+            )
 
-                signal_name = field["name"]
+
+            for field in fields:
+
+                signal_name = field[
+                    "name"
+                ]
+
+
+                # ------------------------------------------
+                # Ein standardisierter Signalname darf
+                # innerhalb eines Fahrzeugs nur einmal
+                # definiert sein.
+                # ------------------------------------------
 
                 if signal_name in self.signal_map:
+
                     raise ValueError(
-                        f"Signal '{signal_name}' ist "
-                        f"für vehicle_id={self.vehicle_id} "
+                        f"Signal '{signal_name}' "
+                        f"ist für Fahrzeug "
+                        f"{self.vehicle_id} "
                         f"mehrfach definiert"
                     )
+
 
                 self.signal_map[
                     signal_name
                 ] = parameter
 
 
+    # ==================================================
+    # VERBINDEN
+    # ==================================================
+
     def connect(self):
-        """
-        CAN konfigurieren und benötigte
-        ISO-TP-Sockets öffnen.
-        """
 
         configured_channels = {}
 
-        for parameter in self.parameters:
 
-            channel = parameter["channel"]
-            bitrate = parameter["bitrate"]
+        # --------------------------------------------------
+        # Für den Verbindungsaufbau berücksichtigen wir
+        # sowohl normale Diagnoseparameter als auch
+        # DTC-Konfigurationen.
+        #
+        # Wenn beide dieselben CAN-IDs verwenden,
+        # wird trotzdem nur EIN ISO-TP-Socket erzeugt.
+        # --------------------------------------------------
 
-            # Prüfen, ob derselbe CAN-Kanal bereits
-            # mit einer anderen Bitrate verwendet wird
-            if channel in configured_channels:
+        configs = (
+            self.parameters
+            + self.dtc_configs
+        )
 
-                if configured_channels[channel] != bitrate:
-                    raise ValueError(
-                        f"CAN-Kanal '{channel}' hat "
-                        f"unterschiedliche Bitraten in "
-                        f"der Datenbank"
-                    )
 
-            else:
+        for config in configs:
+
+            channel = config[
+                "channel"
+            ]
+
+            bitrate = config[
+                "bitrate"
+            ]
+
+
+            # ==============================================
+            # CAN-Kanal konfigurieren
+            # ==============================================
+
+            if channel not in configured_channels:
+
                 self._configure_can(
                     channel,
                     bitrate
                 )
 
+
                 configured_channels[
                     channel
                 ] = bitrate
 
-            transport = parameter["transport"]
 
-            if transport != "isotp":
+            else:
+
+                # ------------------------------------------
+                # Gleicher CAN-Kanal darf nicht mit
+                # verschiedenen Bitraten definiert sein.
+                # ------------------------------------------
+
+                if (
+                    configured_channels[
+                        channel
+                    ]
+                    != bitrate
+                ):
+
+                    raise ValueError(
+                        f"Unterschiedliche Bitraten "
+                        f"für CAN-Kanal "
+                        f"'{channel}' definiert"
+                    )
+
+
+            # ==============================================
+            # Transport prüfen
+            # ==============================================
+
+            if config[
+                "transport"
+            ] != "isotp":
+
                 raise NotImplementedError(
-                    f"Transport '{transport}' "
+                    f"Transport "
+                    f"'{config['transport']}' "
                     f"wird aktuell nicht unterstützt"
                 )
 
-            socket_key = self._get_socket_key(
-                parameter
+
+            # ==============================================
+            # Socket-Key
+            # ==============================================
+
+            socket_key = (
+                self._get_socket_key(
+                    config
+                )
             )
 
-            # Mehrere DIDs eines Steuergeräts
-            # verwenden denselben ISO-TP-Socket
+
+            # ==============================================
+            # Socket nur einmal erzeugen
+            # ==============================================
+
             if socket_key not in self.sockets:
 
                 self.sockets[
                     socket_key
-                ] = self._create_isotp_socket(
-                    parameter
+                ] = (
+                    self._create_isotp_socket(
+                        config
+                    )
                 )
 
 
+    # ==================================================
+    # TRENNEN
+    # ==================================================
+
     def disconnect(self):
-        """
-        Alle geöffneten ISO-TP-Sockets schließen.
-        """
 
         for sock in self.sockets.values():
 
             try:
+
                 sock.close()
+
             except Exception:
+
                 pass
+
 
         self.sockets.clear()
 
+
+    # ==================================================
+    # CAN-KANAL KONFIGURIEREN
+    # ==================================================
 
     def _configure_can(
         self,
         channel,
         bitrate
     ):
-        """
-        SocketCAN Interface konfigurieren.
-        """
+
+        # --------------------------------------------------
+        # CAN zunächst herunterfahren.
+        #
+        # check=False:
+        # Wenn das Interface bereits down ist,
+        # soll das nicht sofort abbrechen.
+        # --------------------------------------------------
 
         subprocess.run(
             [
@@ -169,10 +290,15 @@ class VehicleDiagnostic:
                 "link",
                 "set",
                 channel,
-                "down"
+                "down",
             ],
             check=False
         )
+
+
+        # --------------------------------------------------
+        # Bitrate setzen
+        # --------------------------------------------------
 
         subprocess.run(
             [
@@ -184,10 +310,15 @@ class VehicleDiagnostic:
                 "type",
                 "can",
                 "bitrate",
-                str(bitrate)
+                str(bitrate),
             ],
             check=True
         )
+
+
+        # --------------------------------------------------
+        # CAN aktivieren
+        # --------------------------------------------------
 
         subprocess.run(
             [
@@ -196,37 +327,42 @@ class VehicleDiagnostic:
                 "link",
                 "set",
                 channel,
-                "up"
+                "up",
             ],
             check=True
         )
 
 
+    # ==================================================
+    # SOCKET KEY
+    # ==================================================
+
     def _get_socket_key(
         self,
-        parameter
+        config
     ):
-        """
-        Eindeutige Verbindung zu einem ECU.
-
-        Verschiedene DIDs mit denselben CAN-IDs
-        teilen sich einen ISO-TP-Socket.
-        """
 
         return (
-            parameter["channel"],
-            parameter["request_id"],
-            parameter["response_id"]
+            config[
+                "channel"
+            ],
+            config[
+                "request_id"
+            ],
+            config[
+                "response_id"
+            ],
         )
 
 
+    # ==================================================
+    # ISO-TP SOCKET ERZEUGEN
+    # ==================================================
+
     def _create_isotp_socket(
         self,
-        parameter
+        config
     ):
-        """
-        Linux ISO-TP-Socket erzeugen.
-        """
 
         sock = socket.socket(
             socket.AF_CAN,
@@ -234,19 +370,44 @@ class VehicleDiagnostic:
             socket.CAN_ISOTP
         )
 
-        padding = parameter["tx_padding"]
 
-        if padding is not None:
+        # --------------------------------------------------
+        # TX Padding
+        #
+        # Relevant z. B. für Mercedes:
+        # UDS Request muss auf 8 Byte mit 0x00
+        # aufgefüllt werden.
+        # --------------------------------------------------
+
+        tx_padding = config.get(
+            "tx_padding"
+        )
+
+
+        if tx_padding is not None:
 
             options = struct.pack(
                 "=IIBBBB",
+
+                # flags
                 CAN_ISOTP_TX_PADDING,
+
+                # frame_txtime
                 0,
+
+                # ext_address
                 0,
-                padding,
+
+                # txpad_content
+                int(tx_padding),
+
+                # rxpad_content
                 0,
-                0
+
+                # rx_ext_address
+                0,
             )
+
 
             sock.setsockopt(
                 SOL_CAN_ISOTP,
@@ -254,87 +415,212 @@ class VehicleDiagnostic:
                 options
             )
 
-        sock.settimeout(0.5)
 
-        sock.bind((
-            parameter["channel"],
-            parameter["response_id"],
-            parameter["request_id"]
-        ))
+        # --------------------------------------------------
+        # Timeout für Diagnoseantwort
+        # --------------------------------------------------
+
+        sock.settimeout(
+            0.5
+        )
+
+
+        # --------------------------------------------------
+        # ISO-TP Binding
+        #
+        # Linux erwartet:
+        #
+        # (Interface, RX-ID, TX-ID)
+        #
+        # response_id = RX
+        # request_id  = TX
+        # --------------------------------------------------
+
+        sock.bind(
+            (
+                config[
+                    "channel"
+                ],
+
+                config[
+                    "response_id"
+                ],
+
+                config[
+                    "request_id"
+                ],
+            )
+        )
+
 
         return sock
 
+
+    # ==================================================
+    # NORMALEN DIAGNOSEPARAMETER LESEN
+    # ==================================================
 
     def _read_parameter(
         self,
         parameter
     ):
-        """
-        Einen einzelnen Diagnoseparameter /
-        eine einzelne DID lesen und dekodieren.
-        """
 
-        socket_key = self._get_socket_key(
-            parameter
-        )
-
-        if socket_key not in self.sockets:
-            raise RuntimeError(
-                "Fahrzeugdiagnose ist nicht verbunden"
-            )
-
-        sock = self.sockets[
-            socket_key
+        service = parameter[
+            "service"
         ]
 
-        service = parameter["service"]
-        did = parameter["did"]
+        did = parameter[
+            "did"
+        ]
 
-        # Beispiel:
-        #
-        # service = 0x22
-        # did     = 0x0201
-        #
+
+        # --------------------------------------------------
         # Request:
-        # 22 02 01
-
-        request = bytes([
-            service,
-            (did >> 8) & 0xFF,
-            did & 0xFF
-        ])
-
-        sock.send(request)
-
-        response = sock.recv(4095)
-
-        # Negative UDS Response:
-        # 7F Service NRC
-        if (
-            len(response) >= 3
-            and response[0] == 0x7F
-        ):
-            raise RuntimeError(
-                f"Negative UDS-Antwort bei "
-                f"DID 0x{did:04X}: "
-                + response.hex(" ")
-            )
-
-        # Positive Response bei UDS:
         #
-        # 22 -> 62
-        expected = bytes([
-            service + 0x40,
-            (did >> 8) & 0xFF,
-            did & 0xFF
-        ])
+        # Service
+        # DID High Byte
+        # DID Low Byte
+        #
+        # z. B.
+        #
+        # 22 02 01
+        # --------------------------------------------------
 
-        if not response.startswith(expected):
-            raise RuntimeError(
-                f"Unerwartete UDS-Antwort bei "
-                f"DID 0x{did:04X}: "
-                + response.hex(" ")
+        request = bytes(
+            [
+                service,
+
+                (
+                    did >> 8
+                ) & 0xFF,
+
+                did & 0xFF,
+            ]
+        )
+
+
+        socket_key = (
+            self._get_socket_key(
+                parameter
             )
+        )
+
+
+        sock = self.sockets.get(
+            socket_key
+        )
+
+
+        if sock is None:
+
+            raise RuntimeError(
+                f"Kein Diagnose-Socket für "
+                f"Parameter "
+                f"'{parameter.get('name')}' "
+                f"vorhanden"
+            )
+
+
+        # --------------------------------------------------
+        # Request senden
+        # --------------------------------------------------
+
+        sock.send(
+            request
+        )
+
+
+        # --------------------------------------------------
+        # Antwort lesen
+        # --------------------------------------------------
+
+        response = sock.recv(
+            4095
+        )
+
+
+        if not response:
+
+            raise TimeoutError(
+                f"Keine Antwort auf "
+                f"Service 0x{service:02X}, "
+                f"DID 0x{did:04X}"
+            )
+
+
+        # ==================================================
+        # Negative UDS Response
+        # ==================================================
+
+        if response[0] == 0x7F:
+
+            if len(response) >= 3:
+
+                raise RuntimeError(
+                    f"Negative UDS-Antwort "
+                    f"auf Service "
+                    f"0x{service:02X}: "
+                    f"NRC 0x{response[2]:02X}"
+                )
+
+
+            raise RuntimeError(
+                "Ungültige negative UDS-Antwort"
+            )
+
+
+        # ==================================================
+        # Positive Response prüfen
+        # ==================================================
+
+        expected_service = (
+            service + 0x40
+        ) & 0xFF
+
+
+        if response[0] != expected_service:
+
+            raise RuntimeError(
+                f"Unerwartete UDS-Antwort: "
+                f"0x{response[0]:02X}, "
+                f"erwartet "
+                f"0x{expected_service:02X}"
+            )
+
+
+        # --------------------------------------------------
+        # Bei DID-Reads müssen mindestens
+        #
+        # Service + DID High + DID Low
+        #
+        # vorhanden sein.
+        # --------------------------------------------------
+
+        if len(response) < 3:
+
+            raise RuntimeError(
+                "UDS-Antwort ist zu kurz"
+            )
+
+
+        response_did = (
+            response[1] << 8
+        ) | response[2]
+
+
+        if response_did != did:
+
+            raise RuntimeError(
+                f"Falsche DID in Antwort: "
+                f"0x{response_did:04X}, "
+                f"erwartet "
+                f"0x{did:04X}"
+            )
+
+
+        # ==================================================
+        # Vorhandenen Decoder verwenden
+        # ==================================================
 
         return decode_parameter(
             response,
@@ -342,31 +628,26 @@ class VehicleDiagnostic:
         )
 
 
+    # ==================================================
+    # MEHRERE SIGNALE LESEN
+    # ==================================================
+
     def read_signals(
         self,
         signal_names,
         ignore_missing=False
     ):
-        """
-        Beliebige standardisierte Signale lesen.
 
-        Beispiel:
+        # --------------------------------------------------
+        # Signale zunächst nach Diagnoseparameter gruppieren.
+        #
+        # Dadurch wird z. B. beim Mercedes der DID 0x0201
+        # nur EINMAL gelesen, obwohl darin distance,
+        # angle, speed usw. stecken.
+        # --------------------------------------------------
 
-        read_signals([
-            "distance",
-            "angle",
-            "relative_speed"
-        ])
+        grouped_parameters = {}
 
-        Es spielt keine Rolle, ob diese Signale
-        aus einer DID oder aus mehreren DIDs kommen.
-        """
-
-        result = {}
-
-        # Parameter zusammenfassen, damit eine DID
-        # nicht mehrfach gelesen wird.
-        parameters_to_read = {}
 
         for signal_name in signal_names:
 
@@ -374,93 +655,434 @@ class VehicleDiagnostic:
                 signal_name
             )
 
+
             if parameter is None:
 
                 if ignore_missing:
                     continue
 
-                raise ValueError(
-                    f"Signal '{signal_name}' ist "
-                    f"für vehicle_id={self.vehicle_id} "
+
+                raise KeyError(
+                    f"Signal "
+                    f"'{signal_name}' "
+                    f"ist für Fahrzeug "
+                    f"{self.vehicle_id} "
                     f"nicht definiert"
                 )
 
-            # diagnostic_parameters.id verwenden
-            parameter_id = parameter["id"]
 
-            if parameter_id not in parameters_to_read:
+            parameter_id = parameter[
+                "id"
+            ]
 
-                parameters_to_read[
+
+            if parameter_id not in grouped_parameters:
+
+                grouped_parameters[
                     parameter_id
                 ] = {
-                    "parameter": parameter,
-                    "signals": []
+                    "parameter":
+                        parameter,
+
+                    "signals":
+                        [],
                 }
 
-            parameters_to_read[
+
+            grouped_parameters[
                 parameter_id
-            ]["signals"].append(
+            ][
+                "signals"
+            ].append(
                 signal_name
             )
 
-        # Jede benötigte DID genau einmal lesen
-        for item in parameters_to_read.values():
 
-            parameter = item[
+        results = {}
+
+
+        # ==================================================
+        # Jeden benötigten DID genau einmal lesen
+        # ==================================================
+
+        for group in grouped_parameters.values():
+
+            parameter = group[
                 "parameter"
             ]
 
-            decoded = self._read_parameter(
-                parameter
+
+            decoded_values = (
+                self._read_parameter(
+                    parameter
+                )
             )
 
-            for signal_name in item[
+
+            # --------------------------------------------------
+            # Nur die angeforderten Signale übernehmen.
+            # --------------------------------------------------
+
+            for signal_name in group[
                 "signals"
             ]:
 
-                if signal_name not in decoded:
-                    raise RuntimeError(
-                        f"Signal '{signal_name}' "
-                        f"wurde von DID "
-                        f"0x{parameter['did']:04X} "
+                if signal_name not in decoded_values:
+
+                    raise KeyError(
+                        f"Signal "
+                        f"'{signal_name}' "
+                        f"wurde aus Parameter "
+                        f"'{parameter.get('name')}' "
                         f"nicht dekodiert"
                     )
 
-                result[
+
+                results[
                     signal_name
-                ] = decoded[
+                ] = decoded_values[
                     signal_name
                 ]
 
-        return result
 
+        return results
+
+
+    # ==================================================
+    # EIN SIGNAL LESEN
+    # ==================================================
 
     def read_signal(
         self,
         signal_name
     ):
-        """
-        Convenience-Funktion für ein einzelnes Signal.
 
-        Beispiel:
-        vehicle.read_signal("distance")
-        """
+        result = self.read_signals(
+            [
+                signal_name
+            ]
+        )
 
-        values = self.read_signals([
-            signal_name
-        ])
 
-        return values[
+        return result[
             signal_name
         ]
 
 
+    # ==================================================
+    # VERFÜGBARE SIGNALE
+    # ==================================================
+
     def get_available_signals(self):
-        """
-        Liefert die für dieses Fahrzeug
-        verfügbaren standardisierten Signale.
-        """
 
         return list(
             self.signal_map.keys()
         )
+
+
+    # ==================================================
+    # FEHLERSPEICHER LESEN
+    # ==================================================
+
+    def read_dtcs(self):
+
+        # --------------------------------------------------
+        # Fahrzeug ohne DTC-Konfiguration:
+        # einfach leere Liste zurückgeben.
+        # --------------------------------------------------
+
+        if not self.dtc_configs:
+
+            return []
+
+
+        results = []
+
+
+        # ==================================================
+        # Jede konfigurierte ECU abfragen
+        # ==================================================
+
+        for config in self.dtc_configs:
+
+            service = config[
+                "service"
+            ]
+
+            subfunction = config[
+                "subfunction"
+            ]
+
+            status_mask = config[
+                "status_mask"
+            ]
+
+
+            # --------------------------------------------------
+            # DTC Request
+            #
+            # z. B. Mercedes:
+            #
+            # 19 02 0D
+            # --------------------------------------------------
+
+            request = bytes(
+                [
+                    service,
+                    subfunction,
+                    status_mask,
+                ]
+            )
+
+
+            socket_key = (
+                self._get_socket_key(
+                    config
+                )
+            )
+
+
+            sock = self.sockets.get(
+                socket_key
+            )
+
+
+            if sock is None:
+
+                raise RuntimeError(
+                    f"Kein Diagnose-Socket für "
+                    f"ECU "
+                    f"'{config['ecu_name']}' "
+                    f"vorhanden"
+                )
+
+
+            # ==================================================
+            # Request senden
+            # ==================================================
+
+            sock.send(
+                request
+            )
+
+
+            # ==================================================
+            # Antwort lesen
+            # ==================================================
+
+            response = sock.recv(
+                4095
+            )
+
+
+            if not response:
+
+                raise TimeoutError(
+                    f"Keine DTC-Antwort von "
+                    f"ECU "
+                    f"'{config['ecu_name']}'"
+                )
+
+
+            # ==================================================
+            # Negative UDS Response
+            # ==================================================
+
+            if response[0] == 0x7F:
+
+                if len(response) >= 3:
+
+                    raise RuntimeError(
+                        f"Negative UDS-Antwort "
+                        f"auf Service "
+                        f"0x{service:02X}: "
+                        f"NRC "
+                        f"0x{response[2]:02X}"
+                    )
+
+
+                raise RuntimeError(
+                    "Ungültige negative "
+                    "UDS-Antwort"
+                )
+
+
+            # ==================================================
+            # Positive Response prüfen
+            #
+            # 0x19 -> 0x59
+            # ==================================================
+
+            expected_service = (
+                service + 0x40
+            ) & 0xFF
+
+
+            if response[0] != expected_service:
+
+                raise RuntimeError(
+                    f"Unerwartete DTC-Antwort "
+                    f"von ECU "
+                    f"'{config['ecu_name']}': "
+                    f"0x{response[0]:02X}"
+                )
+
+
+            # --------------------------------------------------
+            # Mindestens:
+            #
+            # 59
+            # Subfunction
+            # DTCStatusAvailabilityMask
+            # --------------------------------------------------
+
+            if len(response) < 3:
+
+                raise RuntimeError(
+                    "DTC-Antwort ist zu kurz"
+                )
+
+
+            # ==================================================
+            # Subfunction prüfen
+            # ==================================================
+
+            if response[1] != subfunction:
+
+                raise RuntimeError(
+                    f"Unerwartete "
+                    f"DTC-Subfunction: "
+                    f"0x{response[1]:02X}, "
+                    f"erwartet "
+                    f"0x{subfunction:02X}"
+                )
+
+
+            # ==================================================
+            # DTCStatusAvailabilityMask
+            # ==================================================
+
+            status_availability_mask = (
+                response[2]
+            )
+
+
+            # ==================================================
+            # DTC-Daten
+            #
+            # Ab Byte 3:
+            #
+            # DTC Byte 1
+            # DTC Byte 2
+            # DTC Byte 3
+            # DTC Status
+            #
+            # also 4 Byte je Eintrag.
+            # ==================================================
+
+            dtc_data = response[
+                3:
+            ]
+
+
+            if len(dtc_data) % 4 != 0:
+
+                raise RuntimeError(
+                    f"Ungültige Länge der "
+                    f"DTC-Daten von ECU "
+                    f"'{config['ecu_name']}': "
+                    f"{len(dtc_data)} Byte"
+                )
+
+
+            dtcs = []
+
+
+            # ==================================================
+            # DTCs parsen
+            # ==================================================
+
+            for index in range(
+                0,
+                len(dtc_data),
+                4
+            ):
+
+                dtc_bytes = (
+                    dtc_data[
+                        index:index + 3
+                    ]
+                )
+
+
+                status = (
+                    dtc_data[
+                        index + 3
+                    ]
+                )
+
+
+                # ----------------------------------------------
+                # Drei DTC-Bytes als Hex darstellen
+                #
+                # C3 00 00
+                # ->
+                # C30000
+                # ----------------------------------------------
+
+                dtc_code = (
+                    dtc_bytes
+                    .hex()
+                    .upper()
+                )
+
+
+                dtcs.append(
+                    {
+                        "code":
+                            dtc_code,
+
+                        "status":
+                            f"0x{status:02X}",
+                    }
+                )
+
+
+            # ==================================================
+            # Ergebnis dieser ECU
+            # ==================================================
+
+            results.append(
+                {
+                    "ecu_id":
+                        config[
+                            "ecu_id"
+                        ],
+
+                    "ecu_name":
+                        config[
+                            "ecu_name"
+                        ],
+
+                    "service":
+                        f"0x{service:02X}",
+
+                    "subfunction":
+                        f"0x{subfunction:02X}",
+
+                    "status_mask":
+                        f"0x{status_mask:02X}",
+
+                    "status_availability_mask":
+                        (
+                            f"0x"
+                            f"{status_availability_mask:02X}"
+                        ),
+
+                    "dtcs":
+                        dtcs,
+                }
+            )
+
+
+        return results

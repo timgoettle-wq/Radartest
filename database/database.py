@@ -52,6 +52,57 @@ def get_vehicle(vehicle_id):
 
     return dict(row)
 
+def get_dtc_configs(vehicle_id):
+
+    connection = get_connection()
+
+    cursor = connection.cursor()
+
+    cursor.execute(
+        """
+        SELECT
+            dtc_config.id AS dtc_config_id,
+            dtc_config.ecu_id,
+            dtc_config.service,
+            dtc_config.subfunction,
+            dtc_config.status_mask,
+            dtc_config.enabled,
+
+            ecus.name AS ecu_name,
+            ecus.interface,
+            ecus.transport,
+            ecus.channel,
+            ecus.bitrate,
+            ecus.request_id,
+            ecus.response_id,
+            ecus.tx_padding
+
+        FROM dtc_config
+
+        JOIN ecus
+            ON dtc_config.ecu_id = ecus.id
+
+        WHERE
+            ecus.vehicle_id = ?
+            AND dtc_config.enabled = 1
+
+        ORDER BY
+            dtc_config.id
+        """,
+        (
+            vehicle_id,
+        )
+    )
+
+    configs = [
+        dict(row)
+        for row in cursor.fetchall()
+    ]
+
+    connection.close()
+
+    return configs
+
 
 def get_parameters(vehicle_id):
     connection = get_connection()
