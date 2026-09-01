@@ -5,6 +5,7 @@ import time
 from diagnostics.vehicle import VehicleDiagnostic
 from radest.device import RadestDevice
 from measurement_logger import MeasurementLogger
+from test_run import TestRun
 
 
 class TestController:
@@ -93,6 +94,13 @@ class TestController:
         self.logging_active = False
 
 
+        # ==================================================
+        # TestRun
+        # ==================================================
+
+        self.test_run = None
+
+
     # ==================================================
     # VERBINDEN
     # ==================================================
@@ -130,7 +138,7 @@ class TestController:
 
         except Exception:
 
-            # Wenn RadEsT nicht verbunden werden konnte,
+            # Falls RadEsT nicht verbunden werden konnte,
             # Fahrzeugverbindung wieder schließen.
 
             self.vehicle.disconnect()
@@ -148,17 +156,27 @@ class TestController:
     def disconnect(self):
 
         # --------------------------------------------------
-        # Messloop zuerst stoppen
+        # Hintergrundmessung stoppen
         # --------------------------------------------------
 
         self.stop_measurement_loop()
 
 
         # --------------------------------------------------
-        # Logger danach sauber schließen
+        # Logger schließen
+        #
+        # Dadurch wird auch der aktuell aktive Test
+        # im TestRun abgeschlossen.
         # --------------------------------------------------
 
         self.stop_logging()
+
+
+        # --------------------------------------------------
+        # TestRun abschließen
+        # --------------------------------------------------
+
+        self.finish_test_run()
 
 
         self.static_test_active = False
@@ -196,6 +214,94 @@ class TestController:
 
 
     # ==================================================
+    # TESTRUN STARTEN
+    # ==================================================
+
+    def start_test_run(self):
+
+        self._check_connection()
+
+
+        # --------------------------------------------------
+        # Wenn bereits ein TestRun existiert,
+        # diesen zurückgeben.
+        # --------------------------------------------------
+
+        if self.test_run is not None:
+
+            return {
+
+                "run_id":
+                    self.test_run.get_run_id(),
+
+                "directory":
+                    self.test_run.get_directory()
+            }
+
+
+        # --------------------------------------------------
+        # Neuen TestRun erzeugen
+        # --------------------------------------------------
+
+        self.test_run = TestRun(
+            vehicle_id=self.vehicle_id
+        )
+
+
+        return {
+
+            "run_id":
+                self.test_run.get_run_id(),
+
+            "directory":
+                self.test_run.get_directory()
+        }
+
+
+    # ==================================================
+    # TESTRUN ABSCHLIESSEN
+    # ==================================================
+
+    def finish_test_run(self):
+
+        if self.test_run is None:
+            return
+
+
+        try:
+
+            self.test_run.finish()
+
+        except Exception:
+
+            pass
+
+
+    # ==================================================
+    # TESTRUN INFORMATIONEN
+    # ==================================================
+
+    def get_test_run_info(self):
+
+        if self.test_run is None:
+
+            return None
+
+
+        return {
+
+            "run_id":
+                self.test_run.get_run_id(),
+
+            "directory":
+                self.test_run.get_directory(),
+
+            "metadata_file":
+                self.test_run.get_metadata_file()
+        }
+
+
+    # ==================================================
     # PRECHECK
     # ==================================================
 
@@ -208,7 +314,7 @@ class TestController:
 
 
         # --------------------------------------------------
-        # Polarisation messen
+        # Polarisation
         # --------------------------------------------------
 
         self.polarization = (
@@ -218,7 +324,7 @@ class TestController:
 
 
         # --------------------------------------------------
-        # Frequenzbereich messen
+        # Frequenzbereich
         # --------------------------------------------------
 
         self.frequency_range = (
@@ -228,7 +334,7 @@ class TestController:
 
 
         # --------------------------------------------------
-        # Leistung / EIRP messen
+        # Leistung / EIRP
         # --------------------------------------------------
 
         self.power = (
@@ -240,7 +346,7 @@ class TestController:
         self.precheck_done = True
 
 
-        return {
+        result = {
 
             "polarization":
                 self.polarization,
@@ -250,6 +356,42 @@ class TestController:
 
             "power":
                 self.power
+        }
+
+
+        # --------------------------------------------------
+        # Precheck im TestRun speichern
+        # --------------------------------------------------
+
+        if self.test_run is not None:
+
+            self.test_run.set_precheck(
+                result
+            )
+
+
+        return result
+
+
+    # ==================================================
+    # PRECHECK-ERGEBNIS
+    # ==================================================
+
+    def get_precheck_result(self):
+
+        return {
+
+            "polarization":
+                self.polarization,
+
+            "frequency_range":
+                self.frequency_range,
+
+            "power":
+                self.power,
+
+            "done":
+                self.precheck_done
         }
 
 
@@ -274,7 +416,7 @@ class TestController:
 
 
         # --------------------------------------------------
-        # Eventuell laufende alte Messung stoppen
+        # Eventuell noch laufende alte Messung stoppen
         # --------------------------------------------------
 
         self.stop_measurement_loop()
@@ -283,8 +425,8 @@ class TestController:
         # --------------------------------------------------
         # Alten Logger schließen
         #
-        # Dadurch bekommt jede neue Messung später
-        # eine eigene CSV-Datei.
+        # Dadurch wird auch der vorherige statische Test
+        # im TestRun abgeschlossen.
         # --------------------------------------------------
 
         self.stop_logging()
@@ -313,7 +455,7 @@ class TestController:
 
 
         # --------------------------------------------------
-        # RadEsT Distanz setzen
+        # RadEsT-Distanz setzen
         # --------------------------------------------------
 
         self.radest.target_set_distance(
@@ -392,7 +534,7 @@ class TestController:
 
 
         # --------------------------------------------------
-        # Abstand ist für diesen Test erforderlich
+        # Abstand wird für statischen Test benötigt
         # --------------------------------------------------
 
         if "distance" not in signals_to_read:
@@ -404,10 +546,10 @@ class TestController:
 
 
         # --------------------------------------------------
-        # Fahrzeugdiagnose
+        # Fahrzeug EINMAL abfragen
         #
-        # VehicleDiagnostic sorgt selbst dafür,
-        # dass ein DID nicht unnötig mehrfach gelesen wird.
+        # VehicleDiagnostic entscheidet intern,
+        # welche DIDs dafür gelesen werden müssen.
         # --------------------------------------------------
 
         vehicle_values = (
@@ -427,10 +569,7 @@ class TestController:
 
 
         # --------------------------------------------------
-        # Differenz
-        #
-        # Fahrzeug wird mit der tatsächlich realisierten
-        # RadEsT-Distanz verglichen.
+        # Differenz zur realisierten RadEsT-Distanz
         # --------------------------------------------------
 
         distance_error = (
@@ -515,10 +654,7 @@ class TestController:
 
 
         # --------------------------------------------------
-        # Startzeit der Messung
-        #
-        # perf_counter_ns:
-        # monotone Uhr für Zeitdifferenzen
+        # Monotone Startzeit
         # --------------------------------------------------
 
         self._measurement_start_ns = (
@@ -534,7 +670,7 @@ class TestController:
 
 
         # --------------------------------------------------
-        # Hintergrund-Thread erzeugen
+        # Hintergrundthread erzeugen
         # --------------------------------------------------
 
         self._measurement_thread = (
@@ -561,7 +697,9 @@ class TestController:
 
         while not self._measurement_stop_event.is_set():
 
-            cycle_start = time.perf_counter()
+            cycle_start = (
+                time.perf_counter()
+            )
 
 
             try:
@@ -576,7 +714,7 @@ class TestController:
 
 
                 # ------------------------------------------
-                # Zeitstempel nach der Diagnoseabfrage
+                # Zeitstempel
                 # ------------------------------------------
 
                 timestamp_ns = (
@@ -604,6 +742,10 @@ class TestController:
                     self._measurement_sequence += 1
 
 
+                    # --------------------------------------
+                    # Laufende Messpunktnummer
+                    # --------------------------------------
+
                     measurement[
                         "sequence"
                     ] = (
@@ -621,7 +763,7 @@ class TestController:
 
 
                     # --------------------------------------
-                    # Absolute Unix-Systemzeit
+                    # Absolute Unix-Zeit
                     # --------------------------------------
 
                     measurement[
@@ -630,7 +772,7 @@ class TestController:
 
 
                     # --------------------------------------
-                    # Zeit seit Beginn dieser Messung
+                    # Zeit seit Messbeginn
                     # --------------------------------------
 
                     measurement[
@@ -639,9 +781,10 @@ class TestController:
 
 
                     # --------------------------------------
-                    # Derselbe Messwert wird später sowohl
-                    # vom WebSocket als auch vom Logger
-                    # verwendet.
+                    # Aktuellen Messwert bereitstellen
+                    #
+                    # Derselbe Messwert wird vom
+                    # WebSocket und vom Logger verwendet.
                     # --------------------------------------
 
                     self._latest_measurement = (
@@ -653,10 +796,9 @@ class TestController:
 
 
                 # ------------------------------------------
-                # LOGGING
+                # CSV LOGGING
                 #
                 # Keine zweite Fahrzeugabfrage.
-                # Genau derselbe Messpunkt wird gespeichert.
                 # ------------------------------------------
 
                 if (
@@ -683,12 +825,14 @@ class TestController:
                     )
 
 
-                # Bei Diagnosefehler Loop beenden
+                # Bei Diagnose- oder Loggingfehler
+                # Hintergrundmessung beenden.
+
                 break
 
 
             # ----------------------------------------------
-            # Möglichst festes Messintervall
+            # Möglichst festes Messintervall einhalten
             # ----------------------------------------------
 
             elapsed_cycle = (
@@ -703,16 +847,11 @@ class TestController:
             )
 
 
-            # Wenn die Diagnose selbst länger als das
-            # gewünschte Intervall dauert, wird direkt
-            # der nächste Messzyklus gestartet.
-
             if remaining > 0:
 
-                # Event.wait statt sleep:
-                #
-                # Der Thread kann dadurch beim Trennen
-                # sofort aufgeweckt und beendet werden.
+                # Event.wait statt time.sleep:
+                # dadurch kann der Thread beim Trennen
+                # sofort beendet werden.
 
                 self._measurement_stop_event.wait(
                     remaining
@@ -726,7 +865,7 @@ class TestController:
     def stop_measurement_loop(self):
 
         # --------------------------------------------------
-        # Thread signalisieren, dass er stoppen soll
+        # Stop-Signal setzen
         # --------------------------------------------------
 
         self._measurement_stop_event.set()
@@ -736,7 +875,7 @@ class TestController:
 
 
         # --------------------------------------------------
-        # Kurz auf sauberes Thread-Ende warten
+        # Kurz auf sauberes Ende warten
         # --------------------------------------------------
 
         if (
@@ -774,7 +913,7 @@ class TestController:
 
 
             # ----------------------------------------------
-            # Thread hat noch keinen ersten Messpunkt erzeugt
+            # Noch kein Messpunkt vorhanden
             # ----------------------------------------------
 
             if self._latest_measurement is None:
@@ -784,9 +923,6 @@ class TestController:
 
             # ----------------------------------------------
             # Kopie zurückgeben
-            #
-            # So kann WebSocket das interne Objekt
-            # nicht versehentlich verändern.
             # ----------------------------------------------
 
             return copy.deepcopy(
@@ -814,7 +950,8 @@ class TestController:
     def start_logging(self):
 
         # --------------------------------------------------
-        # Wenn Logger schon läuft, aktuelle Datei liefern
+        # Wenn Logger bereits aktiv:
+        # vorhandene Datei zurückgeben.
         # --------------------------------------------------
 
         if (
@@ -830,12 +967,32 @@ class TestController:
 
 
         # --------------------------------------------------
-        # Neuen Logger erzeugen
+        # Speicherort bestimmen
+        #
+        # Wenn TestRun vorhanden:
+        # CSV direkt in dessen Ordner speichern.
+        # --------------------------------------------------
+
+        if self.test_run is not None:
+
+            log_directory = (
+                self.test_run
+                .get_directory()
+            )
+
+        else:
+
+            log_directory = None
+
+
+        # --------------------------------------------------
+        # Logger erstellen
         # --------------------------------------------------
 
         self.measurement_logger = (
             MeasurementLogger(
-                vehicle_id=self.vehicle_id
+                vehicle_id=self.vehicle_id,
+                log_directory=log_directory
             )
         )
 
@@ -850,14 +1007,36 @@ class TestController:
         self.logging_active = True
 
 
-        # --------------------------------------------------
-        # Dateipfad zurückgeben
-        # --------------------------------------------------
-
-        return (
+        log_file = (
             self.measurement_logger
             .get_file_path()
         )
+
+
+        # --------------------------------------------------
+        # Statischen Test im TestRun registrieren
+        # --------------------------------------------------
+
+        if (
+            self.test_run is not None
+            and
+            self.static_test_active
+        ):
+
+            self.test_run.start_static_test(
+
+                requested_distance=
+                    self.requested_distance,
+
+                radest_distance=
+                    self.radest_distance,
+
+                log_file=
+                    log_file
+            )
+
+
+        return log_file
 
 
     # ==================================================
@@ -865,6 +1044,10 @@ class TestController:
     # ==================================================
 
     def stop_logging(self):
+
+        # --------------------------------------------------
+        # CSV schließen
+        # --------------------------------------------------
 
         if self.measurement_logger is not None:
 
@@ -878,6 +1061,21 @@ class TestController:
 
 
         self.logging_active = False
+
+
+        # --------------------------------------------------
+        # Aktiven Test im TestRun abschließen
+        # --------------------------------------------------
+
+        if self.test_run is not None:
+
+            try:
+
+                self.test_run.finish_active_test()
+
+            except Exception:
+
+                pass
 
 
     # ==================================================
@@ -906,28 +1104,6 @@ class TestController:
         return (
             self.vehicle.get_available_signals()
         )
-
-
-    # ==================================================
-    # PRECHECK-ERGEBNIS
-    # ==================================================
-
-    def get_precheck_result(self):
-
-        return {
-
-            "polarization":
-                self.polarization,
-
-            "frequency_range":
-                self.frequency_range,
-
-            "power":
-                self.power,
-
-            "done":
-                self.precheck_done
-        }
 
 
     # ==================================================

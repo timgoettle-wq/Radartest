@@ -4,7 +4,7 @@ from fastapi import (
     FastAPI,
     HTTPException,
     WebSocket,
-    WebSocketDisconnect
+    WebSocketDisconnect,
 )
 from fastapi.responses import HTMLResponse
 
@@ -17,17 +17,17 @@ app = FastAPI(
 )
 
 
-# --------------------------------------------------
-# Aktiver TestController
-# --------------------------------------------------
+# ==================================================
+# AKTUELLER TESTCONTROLLER
+# ==================================================
 
 controller = None
 selected_vehicle_id = None
 
 
-# --------------------------------------------------
-# Fahrzeugname
-# --------------------------------------------------
+# ==================================================
+# FAHRZEUGNAME FÜR DROPDOWN
+# ==================================================
 
 def get_vehicle_name(vehicle):
 
@@ -41,8 +41,9 @@ def get_vehicle_name(vehicle):
         "brand",
         "make",
         "model",
-        "variant"
+        "variant",
     ]:
+
         value = vehicle.get(field)
 
         if value and value not in parts:
@@ -58,7 +59,10 @@ def get_vehicle_name(vehicle):
 # WEBSEITE
 # ==================================================
 
-@app.get("/", response_class=HTMLResponse)
+@app.get(
+    "/",
+    response_class=HTMLResponse
+)
 def index():
 
     vehicles = get_vehicles()
@@ -73,8 +77,8 @@ def index():
 
         vehicle_options += (
             f'<option value="{vehicle["id"]}">'
-            f'{name}'
-            f'</option>'
+            f"{name}"
+            f"</option>"
         )
 
 
@@ -125,6 +129,7 @@ def index():
             #error {
                 margin-top: 20px;
                 font-weight: bold;
+                color: red;
             }
 
         </style>
@@ -149,9 +154,11 @@ def index():
                 1. Fahrzeug auswählen
             </h2>
 
+
             <select id="vehicle">
                 __VEHICLE_OPTIONS__
             </select>
+
 
             <button
                 id="connectButton"
@@ -159,6 +166,7 @@ def index():
             >
                 Verbinden
             </button>
+
 
             <button
                 id="disconnectButton"
@@ -173,7 +181,19 @@ def index():
                 Nicht verbunden
             </p>
 
+
             <p id="signals"></p>
+
+
+            <p>
+                TestRun:
+                <span
+                    id="testRun"
+                    class="value"
+                >
+                    -
+                </span>
+            </p>
 
         </section>
 
@@ -187,6 +207,7 @@ def index():
             <h2>
                 2. RadEsT Precheck
             </h2>
+
 
             <button
                 id="precheckButton"
@@ -363,6 +384,17 @@ def index():
                 </span>
             </p>
 
+
+            <p>
+                Logdatei:
+                <span
+                    id="logFile"
+                    class="value"
+                >
+                    -
+                </span>
+            </p>
+
         </section>
 
 
@@ -372,14 +404,14 @@ def index():
         <script>
 
             // ====================================
-            // WebSocket
+            // WEBSOCKET
             // ====================================
 
             let measurementSocket = null;
 
 
             // ====================================
-            // API Hilfsfunktion
+            // API-HILFSFUNKTION
             // ====================================
 
             async function apiRequest(
@@ -432,7 +464,7 @@ def index():
 
 
             // ====================================
-            // Testsystem verbinden
+            // VERBINDEN
             // ====================================
 
             async function connectSystem() {
@@ -483,6 +515,20 @@ def index():
                         + data.signals.join(", ");
 
 
+                    if (
+                        data.test_run
+                        &&
+                        data.test_run.run_id
+                    ) {
+
+                        document.getElementById(
+                            "testRun"
+                        ).textContent =
+                            data.test_run.run_id;
+
+                    }
+
+
                     document.getElementById(
                         "vehicle"
                     ).disabled = true;
@@ -518,12 +564,13 @@ def index():
                     showError(
                         error.message
                     );
+
                 }
             }
 
 
             // ====================================
-            // Precheck
+            // PRECHECK
             // ====================================
 
             async function runPrecheck() {
@@ -622,12 +669,13 @@ def index():
                     showError(
                         error.message
                     );
+
                 }
             }
 
 
             // ====================================
-            // Statische Messung starten
+            // STATISCHE MESSUNG STARTEN
             // ====================================
 
             async function startStaticMeasurement() {
@@ -668,6 +716,16 @@ def index():
                         ).toFixed(2);
 
 
+                    if (data.log_file) {
+
+                        document.getElementById(
+                            "logFile"
+                        ).textContent =
+                            data.log_file;
+
+                    }
+
+
                     startLiveMeasurement();
 
                 }
@@ -677,12 +735,13 @@ def index():
                     showError(
                         error.message
                     );
+
                 }
             }
 
 
             // ====================================
-            // WebSocket starten
+            // WEBSOCKET STARTEN
             // ====================================
 
             function startLiveMeasurement() {
@@ -788,7 +847,7 @@ def index():
 
 
             // ====================================
-            // Messwerte anzeigen
+            // LIVE-MESSWERT ANZEIGEN
             // ====================================
 
             function updateMeasurement(
@@ -830,17 +889,23 @@ def index():
 
                 }
 
+                else {
+
+                    document.getElementById(
+                        "vehicleDistance"
+                    ).textContent = "-";
+
+                }
+
 
                 // -------------------------------
                 // Differenz
                 // -------------------------------
 
                 if (
-                    data.distance_error
-                    !== null
+                    data.distance_error !== null
                     &&
-                    data.distance_error
-                    !== undefined
+                    data.distance_error !== undefined
                 ) {
 
                     document.getElementById(
@@ -849,6 +914,14 @@ def index():
                         Number(
                             data.distance_error
                         ).toFixed(2);
+
+                }
+
+                else {
+
+                    document.getElementById(
+                        "distanceError"
+                    ).textContent = "-";
 
                 }
 
@@ -937,14 +1010,17 @@ def index():
 
 
             // ====================================
-            // WebSocket stoppen
+            // WEBSOCKET STOPPEN
+            //
+            // Wichtig:
+            // Nur Live-Anzeige wird gestoppt.
+            // Der Hintergrund-Messloop läuft weiter.
             // ====================================
 
             function stopLiveMeasurement() {
 
                 if (
-                    measurementSocket
-                    !== null
+                    measurementSocket !== null
                 ) {
 
                     measurementSocket.close();
@@ -961,7 +1037,7 @@ def index():
 
 
             // ====================================
-            // Testsystem trennen
+            // TESTSYSTEM TRENNEN
             // ====================================
 
             async function disconnectSystem() {
@@ -1038,15 +1114,21 @@ def index():
                     showError(
                         error.message
                     );
+
                 }
             }
 
 
             // ====================================
-            // Werte zurücksetzen
+            // ANZEIGE ZURÜCKSETZEN
             // ====================================
 
             function resetValues() {
+
+                document.getElementById(
+                    "testRun"
+                ).textContent = "-";
+
 
                 document.getElementById(
                     "polarization"
@@ -1096,11 +1178,16 @@ def index():
                 document.getElementById(
                     "relativeAcceleration"
                 ).textContent = "-";
+
+
+                document.getElementById(
+                    "logFile"
+                ).textContent = "-";
             }
 
 
             // ====================================
-            // Fehler
+            // FEHLER
             // ====================================
 
             function showError(
@@ -1159,7 +1246,11 @@ def connect_vehicle(
 
     try:
 
-        # Alte Verbindung trennen
+        # --------------------------------------------------
+        # Falls bereits ein Controller vorhanden ist:
+        # sauber trennen.
+        # --------------------------------------------------
+
         if controller is not None:
 
             controller.disconnect()
@@ -1169,15 +1260,34 @@ def connect_vehicle(
             selected_vehicle_id = None
 
 
-        # Neuen Controller erstellen
+        # --------------------------------------------------
+        # Controller für ausgewähltes Fahrzeug
+        # --------------------------------------------------
+
         new_controller = TestController(
             vehicle_id=vehicle_id
         )
 
 
+        # --------------------------------------------------
         # Fahrzeug + RadEsT verbinden
+        # --------------------------------------------------
+
         new_controller.connect()
 
+
+        # --------------------------------------------------
+        # Neuen TestRun starten
+        # --------------------------------------------------
+
+        test_run = (
+            new_controller.start_test_run()
+        )
+
+
+        # --------------------------------------------------
+        # Erst nach erfolgreichem Connect global setzen
+        # --------------------------------------------------
 
         controller = new_controller
 
@@ -1185,21 +1295,35 @@ def connect_vehicle(
 
 
         return {
-            "connected": True,
-            "vehicle_id": vehicle_id,
+
+            "connected":
+                True,
+
+            "vehicle_id":
+                vehicle_id,
+
             "signals":
-                controller.get_available_signals()
+                controller.get_available_signals(),
+
+            "test_run":
+                test_run
         }
 
 
     except Exception as error:
 
+        # --------------------------------------------------
+        # Teilweise aufgebaute Verbindung aufräumen
+        # --------------------------------------------------
+
         if new_controller is not None:
 
             try:
+
                 new_controller.disconnect()
 
             except Exception:
+
                 pass
 
 
@@ -1260,7 +1384,12 @@ def start_static_measurement(
             detail="Testsystem ist nicht verbunden"
         )
 
+
     try:
+
+        # --------------------------------------------------
+        # RadEsT-Distanz einstellen
+        # --------------------------------------------------
 
         result = (
             controller.start_static_measurement(
@@ -1268,17 +1397,39 @@ def start_static_measurement(
             )
         )
 
+
+        # --------------------------------------------------
+        # CSV-Logging starten
+        #
+        # Der Logger registriert gleichzeitig den
+        # statischen Test im aktuellen TestRun.
+        # --------------------------------------------------
+
         log_file = (
             controller.start_logging()
         )
+
+
+        # --------------------------------------------------
+        # Hintergrund-Messloop starten
+        # --------------------------------------------------
 
         controller.start_measurement_loop(
             interval_s=0.2
         )
 
-        result["log_file"] = log_file
+
+        # --------------------------------------------------
+        # Logdatei zusätzlich an Browser zurückgeben
+        # --------------------------------------------------
+
+        result[
+            "log_file"
+        ] = log_file
+
 
         return result
+
 
     except Exception as error:
 
@@ -1286,6 +1437,7 @@ def start_static_measurement(
             status_code=500,
             detail=str(error)
         )
+
 
 # ==================================================
 # WEBSOCKET: LIVE-MESSUNG
@@ -1300,8 +1452,7 @@ async def static_measurement_websocket(
 
 
     # --------------------------------------------------
-    # Controller merken, der zu dieser
-    # WebSocket-Verbindung gehört
+    # Controller merken, zu dem dieser WebSocket gehört
     # --------------------------------------------------
 
     active_controller = controller
@@ -1310,10 +1461,14 @@ async def static_measurement_websocket(
     if active_controller is None:
 
         await websocket.send_json({
-            "type": "error",
+
+            "type":
+                "error",
+
             "message":
                 "Testsystem ist nicht verbunden"
         })
+
 
         await websocket.close()
 
@@ -1327,15 +1482,18 @@ async def static_measurement_websocket(
 
         while True:
 
-            # ------------------------------------------
-            # Wurde inzwischen Fahrzeug/Controller
-            # gewechselt?
-            # ------------------------------------------
+            # ----------------------------------------------
+            # Wurde Controller inzwischen getrennt
+            # oder durch einen anderen ersetzt?
+            # ----------------------------------------------
 
             if controller is not active_controller:
 
                 await websocket.send_json({
-                    "type": "error",
+
+                    "type":
+                        "error",
+
                     "message":
                         "Testsystem wurde getrennt "
                         "oder gewechselt"
@@ -1346,11 +1504,12 @@ async def static_measurement_websocket(
 
             try:
 
-                # --------------------------------------
-                # KEINE Fahrzeugdiagnose mehr hier!
+                # ------------------------------------------
+                # KEINE CAN-/UDS-Abfrage hier.
                 #
-                # Nur bereits erzeugten Messwert holen.
-                # --------------------------------------
+                # Der TestController erzeugt die Messwerte
+                # unabhängig im Hintergrundthread.
+                # ------------------------------------------
 
                 measurement = (
                     active_controller
@@ -1367,15 +1526,19 @@ async def static_measurement_websocket(
                     )
 
 
-                    # ----------------------------------
-                    # Nur neue Messpunkte senden
-                    # ----------------------------------
+                    # --------------------------------------
+                    # Nur neue Messpunkte übertragen
+                    # --------------------------------------
 
                     if sequence != last_sequence:
 
                         await websocket.send_json({
-                            "type": "measurement",
-                            "data": measurement
+
+                            "type":
+                                "measurement",
+
+                            "data":
+                                measurement
                         })
 
 
@@ -1387,19 +1550,22 @@ async def static_measurement_websocket(
             except Exception as error:
 
                 await websocket.send_json({
-                    "type": "error",
-                    "message": str(error)
+
+                    "type":
+                        "error",
+
+                    "message":
+                        str(error)
                 })
 
                 break
 
 
-            # ------------------------------------------
-            # WebSocket prüft nur, ob ein neuer
-            # Messpunkt vorliegt.
+            # ----------------------------------------------
+            # Nur prüfen, ob ein neuer Messpunkt vorliegt.
             #
-            # Keine CAN-Abfrage!
-            # ------------------------------------------
+            # Messloop läuft separat mit ca. 200 ms.
+            # ----------------------------------------------
 
             await asyncio.sleep(
                 0.05
@@ -1408,10 +1574,12 @@ async def static_measurement_websocket(
 
     except WebSocketDisconnect:
 
-        # Browser wurde geschlossen.
+        # --------------------------------------------------
+        # Browser/WebSocket weg:
         #
-        # WICHTIG:
-        # Der Measurement-Thread läuft trotzdem weiter.
+        # Hintergrundmessung läuft bewusst weiter.
+        # --------------------------------------------------
+
         pass
 
 
@@ -1441,7 +1609,17 @@ def disconnect_vehicle():
 
         try:
 
+            # TestController erledigt intern:
+            #
+            # - Measurement Thread stoppen
+            # - CSV schließen
+            # - aktiven statischen Test abschließen
+            # - TestRun abschließen
+            # - Fahrzeug trennen
+            # - RadEsT trennen
+
             controller.disconnect()
+
 
         finally:
 
