@@ -1260,15 +1260,25 @@ def start_static_measurement(
             detail="Testsystem ist nicht verbunden"
         )
 
-
     try:
 
-        return (
+        result = (
             controller.start_static_measurement(
                 distance_m
             )
         )
 
+        log_file = (
+            controller.start_logging()
+        )
+
+        controller.start_measurement_loop(
+            interval_s=0.2
+        )
+
+        result["log_file"] = log_file
+
+        return result
 
     except Exception as error:
 
@@ -1276,7 +1286,6 @@ def start_static_measurement(
             status_code=500,
             detail=str(error)
         )
-
 
 # ==================================================
 # WEBSOCKET: LIVE-MESSUNG
@@ -1290,35 +1299,46 @@ async def static_measurement_websocket(
     await websocket.accept()
 
 
+    # --------------------------------------------------
+    # Controller merken, der zu dieser
+    # WebSocket-Verbindung gehört
+    # --------------------------------------------------
+
+    active_controller = controller
+
+
+    if active_controller is None:
+
+        await websocket.send_json({
+            "type": "error",
+            "message":
+                "Testsystem ist nicht verbunden"
+        })
+
+        await websocket.close()
+
+        return
+
+
+    last_sequence = None
+
+
     try:
 
         while True:
 
-            # --------------------------------------
-            # Controller vorhanden?
-            # --------------------------------------
+            # ------------------------------------------
+            # Wurde inzwischen Fahrzeug/Controller
+            # gewechselt?
+            # ------------------------------------------
 
-            if controller is None:
-
-                await websocket.send_json({
-                    "type": "error",
-                    "message":
-                        "Testsystem ist nicht verbunden"
-                })
-
-                break
-
-
-            # --------------------------------------
-            # Statische Messung aktiv?
-            # --------------------------------------
-
-            if not controller.static_test_active:
+            if controller is not active_controller:
 
                 await websocket.send_json({
                     "type": "error",
                     "message":
-                        "Statische Messung ist nicht aktiv"
+                        "Testsystem wurde getrennt "
+                        "oder gewechselt"
                 })
 
                 break
@@ -1326,26 +1346,42 @@ async def static_measurement_websocket(
 
             try:
 
-                # ----------------------------------
-                # Fahrzeugdiagnose läuft synchron.
-                # Deshalb in Worker-Thread.
-                # ----------------------------------
+                # --------------------------------------
+                # KEINE Fahrzeugdiagnose mehr hier!
+                #
+                # Nur bereits erzeugten Messwert holen.
+                # --------------------------------------
 
                 measurement = (
-                    await asyncio.to_thread(
-                        controller.read_static_measurement
-                    )
+                    active_controller
+                    .get_latest_measurement()
                 )
 
 
-                # ----------------------------------
-                # Messwert an Browser schicken
-                # ----------------------------------
+                if measurement is not None:
 
-                await websocket.send_json({
-                    "type": "measurement",
-                    "data": measurement
-                })
+                    sequence = (
+                        measurement.get(
+                            "sequence"
+                        )
+                    )
+
+
+                    # ----------------------------------
+                    # Nur neue Messpunkte senden
+                    # ----------------------------------
+
+                    if sequence != last_sequence:
+
+                        await websocket.send_json({
+                            "type": "measurement",
+                            "data": measurement
+                        })
+
+
+                        last_sequence = (
+                            sequence
+                        )
 
 
             except Exception as error:
@@ -1358,14 +1394,24 @@ async def static_measurement_websocket(
                 break
 
 
-            # ca. 2 Hz
+            # ------------------------------------------
+            # WebSocket prüft nur, ob ein neuer
+            # Messpunkt vorliegt.
+            #
+            # Keine CAN-Abfrage!
+            # ------------------------------------------
+
             await asyncio.sleep(
-                0.5
+                0.05
             )
 
 
     except WebSocketDisconnect:
 
+        # Browser wurde geschlossen.
+        #
+        # WICHTIG:
+        # Der Measurement-Thread läuft trotzdem weiter.
         pass
 
 

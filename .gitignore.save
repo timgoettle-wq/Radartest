@@ -4,3 +4,5 @@ __pycache__/
 *.log
 .env
 .vscode/
+logs/*.csv
+logs/*.txt
