@@ -300,6 +300,33 @@ class TestController:
                 self.test_run.get_metadata_file()
         }
 
+    # ==================================================
+    # QUICK CHECK
+    # ==================================================
+
+    # ==================================================
+# QUICK CHECK
+# ==================================================
+
+    def run_quick_check(self):
+
+        self._check_connection()
+
+        dtcs_before = (
+            self.vehicle.read_dtcs()
+        )
+
+        result = {
+            "dtcs_before": dtcs_before
+        }
+
+        if self.test_run is not None:
+
+            self.test_run.set_quick_check(
+                result
+            )
+
+        return result
 
     # ==================================================
     # PRECHECK

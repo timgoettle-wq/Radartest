@@ -121,6 +121,10 @@ def index():
                 font-weight: bold;
             }
 
+            .dtc {
+                margin-left: 20px;
+            }
+
             #status {
                 margin-top: 15px;
                 font-weight: bold;
@@ -199,13 +203,52 @@ def index():
 
 
         <!-- =================================== -->
-        <!-- 2. Precheck -->
+        <!-- 2. Quick Check -->
         <!-- =================================== -->
 
         <section>
 
             <h2>
-                2. RadEsT Precheck
+                2. Fahrzeug Quick Check
+            </h2>
+
+
+            <button
+                id="quickCheckButton"
+                onclick="runQuickCheck()"
+                disabled
+            >
+                Quick Check starten
+            </button>
+
+
+            <div id="quickCheckResult">
+
+                <p>
+                    Fehlerspeicher:
+                    <span
+                        id="dtcStatus"
+                        class="value"
+                    >
+                        -
+                    </span>
+                </p>
+
+                <div id="dtcList"></div>
+
+            </div>
+
+        </section>
+
+
+        <!-- =================================== -->
+        <!-- 3. Precheck -->
+        <!-- =================================== -->
+
+        <section>
+
+            <h2>
+                3. RadEsT Precheck
             </h2>
 
 
@@ -254,13 +297,13 @@ def index():
 
 
         <!-- =================================== -->
-        <!-- 3. Statische Messung -->
+        <!-- 4. Statische Messung -->
         <!-- =================================== -->
 
         <section>
 
             <h2>
-                3. Statische Messung
+                4. Statische Messung
             </h2>
 
 
@@ -403,10 +446,6 @@ def index():
 
         <script>
 
-            // ====================================
-            // WEBSOCKET
-            // ====================================
-
             let measurementSocket = null;
 
 
@@ -545,8 +584,14 @@ def index():
 
 
                     document.getElementById(
-                        "precheckButton"
+                        "quickCheckButton"
                     ).disabled = false;
+
+
+                    // Precheck erst nach Quick Check
+                    document.getElementById(
+                        "precheckButton"
+                    ).disabled = true;
 
                 }
 
@@ -570,7 +615,250 @@ def index():
 
 
             // ====================================
-            // PRECHECK
+            // QUICK CHECK
+            // ====================================
+
+            async function runQuickCheck() {
+
+                clearError();
+
+
+                const button =
+                    document.getElementById(
+                        "quickCheckButton"
+                    );
+
+
+                button.disabled = true;
+
+                button.textContent =
+                    "Quick Check läuft...";
+
+
+                document.getElementById(
+                    "dtcStatus"
+                ).textContent =
+                    "wird gelesen...";
+
+
+                document.getElementById(
+                    "dtcList"
+                ).innerHTML = "";
+
+
+                try {
+
+                    const data =
+                        await apiRequest(
+                            "/api/quick-check",
+                            {
+                                method: "POST"
+                            }
+                        );
+
+
+                    displayDtcs(
+                        data.dtcs_before
+                    );
+
+
+                    button.textContent =
+                        "Quick Check erneut starten";
+
+
+                    button.disabled = false;
+
+
+                    // Nach erfolgreichem Quick Check
+                    // darf der RadEsT Precheck gestartet werden
+                    document.getElementById(
+                        "precheckButton"
+                    ).disabled = false;
+
+                }
+
+                catch (error) {
+
+                    button.textContent =
+                        "Quick Check starten";
+
+
+                    button.disabled = false;
+
+
+                    document.getElementById(
+                        "dtcStatus"
+                    ).textContent =
+                        "Fehler";
+
+
+                    showError(
+                        error.message
+                    );
+
+                }
+            }
+
+
+            // ====================================
+            // DTC-ERGEBNIS ANZEIGEN
+            // ====================================
+
+            function displayDtcs(
+                ecuResults
+            ) {
+
+                const list =
+                    document.getElementById(
+                        "dtcList"
+                    );
+
+
+                list.innerHTML = "";
+
+
+                if (
+                    !ecuResults
+                    ||
+                    ecuResults.length === 0
+                ) {
+
+                    document.getElementById(
+                        "dtcStatus"
+                    ).textContent =
+                        "Keine DTC-Konfiguration vorhanden";
+
+                    return;
+                }
+
+
+                let totalDtcs = 0;
+
+
+                for (
+                    const ecu of ecuResults
+                ) {
+
+                    totalDtcs +=
+                        ecu.dtcs.length;
+
+
+                    const ecuTitle =
+                        document.createElement(
+                            "p"
+                        );
+
+
+                    ecuTitle.innerHTML =
+                        "<strong>ECU:</strong> "
+                        + ecu.ecu_name;
+
+
+                    list.appendChild(
+                        ecuTitle
+                    );
+
+
+                    const mask =
+                        document.createElement(
+                            "p"
+                        );
+
+
+                    mask.className =
+                        "dtc";
+
+
+                    mask.textContent =
+                        "Status Availability Mask: "
+                        + ecu.status_availability_mask;
+
+
+                    list.appendChild(
+                        mask
+                    );
+
+
+                    if (
+                        ecu.dtcs.length === 0
+                    ) {
+
+                        const empty =
+                            document.createElement(
+                                "p"
+                            );
+
+
+                        empty.className =
+                            "dtc";
+
+
+                        empty.textContent =
+                            "Keine DTCs vorhanden";
+
+
+                        list.appendChild(
+                            empty
+                        );
+
+
+                        continue;
+                    }
+
+
+                    for (
+                        const dtc of ecu.dtcs
+                    ) {
+
+                        const item =
+                            document.createElement(
+                                "p"
+                            );
+
+
+                        item.className =
+                            "dtc";
+
+
+                        item.textContent =
+                            "DTC: "
+                            + dtc.code
+                            + " | Status: "
+                            + dtc.status;
+
+
+                        list.appendChild(
+                            item
+                        );
+
+                    }
+
+                }
+
+
+                if (totalDtcs === 0) {
+
+                    document.getElementById(
+                        "dtcStatus"
+                    ).textContent =
+                        "Keine Fehler gespeichert";
+
+                }
+
+                else {
+
+                    document.getElementById(
+                        "dtcStatus"
+                    ).textContent =
+                        totalDtcs
+                        + " DTC(s) gefunden";
+
+                }
+            }
+
+
+            // ====================================
+            // RADEST PRECHECK
             // ====================================
 
             async function runPrecheck() {
@@ -874,10 +1162,6 @@ def index():
                     data.vehicle;
 
 
-                // -------------------------------
-                // Abstand
-                // -------------------------------
-
                 if (vehicle.distance) {
 
                     document.getElementById(
@@ -897,10 +1181,6 @@ def index():
 
                 }
 
-
-                // -------------------------------
-                // Differenz
-                // -------------------------------
 
                 if (
                     data.distance_error !== null
@@ -926,10 +1206,6 @@ def index():
                 }
 
 
-                // -------------------------------
-                // Winkel
-                // -------------------------------
-
                 if (vehicle.angle) {
 
                     document.getElementById(
@@ -951,10 +1227,6 @@ def index():
 
                 }
 
-
-                // -------------------------------
-                // Relativgeschwindigkeit
-                // -------------------------------
 
                 if (
                     vehicle.relative_speed
@@ -979,10 +1251,6 @@ def index():
 
                 }
 
-
-                // -------------------------------
-                // Relativbeschleunigung
-                // -------------------------------
 
                 if (
                     vehicle.relative_acceleration
@@ -1011,10 +1279,6 @@ def index():
 
             // ====================================
             // WEBSOCKET STOPPEN
-            //
-            // Wichtig:
-            // Nur Live-Anzeige wird gestoppt.
-            // Der Hintergrund-Messloop läuft weiter.
             // ====================================
 
             function stopLiveMeasurement() {
@@ -1085,6 +1349,17 @@ def index():
 
 
                     document.getElementById(
+                        "quickCheckButton"
+                    ).disabled = true;
+
+
+                    document.getElementById(
+                        "quickCheckButton"
+                    ).textContent =
+                        "Quick Check starten";
+
+
+                    document.getElementById(
                         "precheckButton"
                     ).disabled = true;
 
@@ -1128,6 +1403,16 @@ def index():
                 document.getElementById(
                     "testRun"
                 ).textContent = "-";
+
+
+                document.getElementById(
+                    "dtcStatus"
+                ).textContent = "-";
+
+
+                document.getElementById(
+                    "dtcList"
+                ).innerHTML = "";
 
 
                 document.getElementById(
@@ -1246,11 +1531,6 @@ def connect_vehicle(
 
     try:
 
-        # --------------------------------------------------
-        # Falls bereits ein Controller vorhanden ist:
-        # sauber trennen.
-        # --------------------------------------------------
-
         if controller is not None:
 
             controller.disconnect()
@@ -1260,34 +1540,18 @@ def connect_vehicle(
             selected_vehicle_id = None
 
 
-        # --------------------------------------------------
-        # Controller für ausgewähltes Fahrzeug
-        # --------------------------------------------------
-
         new_controller = TestController(
             vehicle_id=vehicle_id
         )
 
 
-        # --------------------------------------------------
-        # Fahrzeug + RadEsT verbinden
-        # --------------------------------------------------
-
         new_controller.connect()
 
-
-        # --------------------------------------------------
-        # Neuen TestRun starten
-        # --------------------------------------------------
 
         test_run = (
             new_controller.start_test_run()
         )
 
-
-        # --------------------------------------------------
-        # Erst nach erfolgreichem Connect global setzen
-        # --------------------------------------------------
 
         controller = new_controller
 
@@ -1312,10 +1576,6 @@ def connect_vehicle(
 
     except Exception as error:
 
-        # --------------------------------------------------
-        # Teilweise aufgebaute Verbindung aufräumen
-        # --------------------------------------------------
-
         if new_controller is not None:
 
             try:
@@ -1339,7 +1599,37 @@ def connect_vehicle(
 
 
 # ==================================================
-# API: PRECHECK
+# API: QUICK CHECK
+# ==================================================
+
+@app.post("/api/quick-check")
+def run_quick_check():
+
+    if controller is None:
+
+        raise HTTPException(
+            status_code=400,
+            detail="Testsystem ist nicht verbunden"
+        )
+
+
+    try:
+
+        return (
+            controller.run_quick_check()
+        )
+
+
+    except Exception as error:
+
+        raise HTTPException(
+            status_code=500,
+            detail=str(error)
+        )
+
+
+# ==================================================
+# API: RADEST PRECHECK
 # ==================================================
 
 @app.post("/api/precheck")
@@ -1387,10 +1677,6 @@ def start_static_measurement(
 
     try:
 
-        # --------------------------------------------------
-        # RadEsT-Distanz einstellen
-        # --------------------------------------------------
-
         result = (
             controller.start_static_measurement(
                 distance_m
@@ -1398,30 +1684,15 @@ def start_static_measurement(
         )
 
 
-        # --------------------------------------------------
-        # CSV-Logging starten
-        #
-        # Der Logger registriert gleichzeitig den
-        # statischen Test im aktuellen TestRun.
-        # --------------------------------------------------
-
         log_file = (
             controller.start_logging()
         )
 
 
-        # --------------------------------------------------
-        # Hintergrund-Messloop starten
-        # --------------------------------------------------
-
         controller.start_measurement_loop(
             interval_s=0.2
         )
 
-
-        # --------------------------------------------------
-        # Logdatei zusätzlich an Browser zurückgeben
-        # --------------------------------------------------
 
         result[
             "log_file"
@@ -1451,10 +1722,6 @@ async def static_measurement_websocket(
     await websocket.accept()
 
 
-    # --------------------------------------------------
-    # Controller merken, zu dem dieser WebSocket gehört
-    # --------------------------------------------------
-
     active_controller = controller
 
 
@@ -1482,11 +1749,6 @@ async def static_measurement_websocket(
 
         while True:
 
-            # ----------------------------------------------
-            # Wurde Controller inzwischen getrennt
-            # oder durch einen anderen ersetzt?
-            # ----------------------------------------------
-
             if controller is not active_controller:
 
                 await websocket.send_json({
@@ -1504,13 +1766,6 @@ async def static_measurement_websocket(
 
             try:
 
-                # ------------------------------------------
-                # KEINE CAN-/UDS-Abfrage hier.
-                #
-                # Der TestController erzeugt die Messwerte
-                # unabhängig im Hintergrundthread.
-                # ------------------------------------------
-
                 measurement = (
                     active_controller
                     .get_latest_measurement()
@@ -1525,10 +1780,6 @@ async def static_measurement_websocket(
                         )
                     )
 
-
-                    # --------------------------------------
-                    # Nur neue Messpunkte übertragen
-                    # --------------------------------------
 
                     if sequence != last_sequence:
 
@@ -1561,24 +1812,12 @@ async def static_measurement_websocket(
                 break
 
 
-            # ----------------------------------------------
-            # Nur prüfen, ob ein neuer Messpunkt vorliegt.
-            #
-            # Messloop läuft separat mit ca. 200 ms.
-            # ----------------------------------------------
-
             await asyncio.sleep(
                 0.05
             )
 
 
     except WebSocketDisconnect:
-
-        # --------------------------------------------------
-        # Browser/WebSocket weg:
-        #
-        # Hintergrundmessung läuft bewusst weiter.
-        # --------------------------------------------------
 
         pass
 
@@ -1608,15 +1847,6 @@ def disconnect_vehicle():
     if controller is not None:
 
         try:
-
-            # TestController erledigt intern:
-            #
-            # - Measurement Thread stoppen
-            # - CSV schließen
-            # - aktiven statischen Test abschließen
-            # - TestRun abschließen
-            # - Fahrzeug trennen
-            # - RadEsT trennen
 
             controller.disconnect()
 
