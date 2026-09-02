@@ -138,6 +138,11 @@ class MeasurementLogger:
     ):
 
         row = {
+            "test_type":
+                measurement.get(
+                    "test_type"
+                ),
+
             "sequence":
                 measurement.get(
                     "sequence"
@@ -171,6 +176,41 @@ class MeasurementLogger:
             "distance_error_m":
                 measurement.get(
                     "distance_error"
+                ),
+
+            "scenario_start_distance_m":
+                measurement.get(
+                    "scenario_start_distance"
+                ),
+
+            "scenario_end_distance_m":
+                measurement.get(
+                    "scenario_end_distance"
+                ),
+
+            "scenario_velocity_kmh":
+                measurement.get(
+                    "scenario_velocity_kmh"
+                ),
+
+            "scenario_duration_s":
+                measurement.get(
+                    "scenario_duration_s"
+                ),
+
+            "scenario_elapsed_s":
+                measurement.get(
+                    "scenario_elapsed_s"
+                ),
+
+            "scenario_progress":
+                measurement.get(
+                    "scenario_progress"
+                ),
+
+            "scenario_done":
+                measurement.get(
+                    "scenario_done"
                 )
         }
 

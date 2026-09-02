@@ -332,6 +332,123 @@ def index():
                 Messung starten
             </button>
 
+        </section>
+
+
+        <!-- =================================== -->
+        <!-- 5. Dynamische Messung -->
+        <!-- =================================== -->
+
+        <section>
+
+            <h2>
+                5. Dynamische Messung
+            </h2>
+
+
+            <label for="dynamicStartDistanceInput">
+                Startdistanz:
+            </label>
+
+            <input
+                id="dynamicStartDistanceInput"
+                type="number"
+                value="30.0"
+                step="0.1"
+                min="0.1"
+                disabled
+            >
+
+            <span>m</span>
+
+
+            <label for="dynamicEndDistanceInput">
+                Enddistanz:
+            </label>
+
+            <input
+                id="dynamicEndDistanceInput"
+                type="number"
+                value="5.0"
+                step="0.1"
+                min="0.1"
+                disabled
+            >
+
+            <span>m</span>
+
+
+            <label for="dynamicVelocityInput">
+                Geschwindigkeit:
+            </label>
+
+            <input
+                id="dynamicVelocityInput"
+                type="number"
+                value="20"
+                step="1"
+                min="1"
+                disabled
+            >
+
+            <span>km/h</span>
+
+
+            <button
+                id="dynamicButton"
+                onclick="startDynamicMeasurement()"
+                disabled
+            >
+                Scenario starten
+            </button>
+
+
+            <p>
+                Scenario-Status:
+                <span
+                    id="scenarioStatus"
+                    class="value"
+                >
+                    -
+                </span>
+            </p>
+
+
+            <p>
+                Berechnete Dauer:
+                <span
+                    id="scenarioDuration"
+                    class="value"
+                >
+                    -
+                </span>
+                s
+            </p>
+
+
+            <p>
+                Fortschritt:
+                <span
+                    id="scenarioProgress"
+                    class="value"
+                >
+                    -
+                </span>
+            </p>
+
+        </section>
+
+
+        <!-- =================================== -->
+        <!-- 6. Live-Werte -->
+        <!-- =================================== -->
+
+        <section>
+
+            <h2>
+                6. Live-Werte
+            </h2>
+
 
             <button
                 id="stopButton"
@@ -340,11 +457,6 @@ def index():
             >
                 Live-Anzeige stoppen
             </button>
-
-
-            <h3>
-                Live-Werte
-            </h3>
 
 
             <p>
@@ -360,7 +472,7 @@ def index():
 
 
             <p>
-                RadEsT:
+                RadEsT / Scenario-Soll:
                 <span
                     id="radestDistance"
                     class="value"
@@ -937,6 +1049,26 @@ def index():
                     ).disabled = false;
 
 
+                    document.getElementById(
+                        "dynamicStartDistanceInput"
+                    ).disabled = false;
+
+
+                    document.getElementById(
+                        "dynamicEndDistanceInput"
+                    ).disabled = false;
+
+
+                    document.getElementById(
+                        "dynamicVelocityInput"
+                    ).disabled = false;
+
+
+                    document.getElementById(
+                        "dynamicButton"
+                    ).disabled = false;
+
+
                     button.textContent =
                         "Precheck erneut starten";
 
@@ -1029,6 +1161,141 @@ def index():
 
 
             // ====================================
+            // DYNAMISCHE MESSUNG STARTEN
+            // ====================================
+
+            async function startDynamicMeasurement() {
+
+                clearError();
+
+
+                const startDistance =
+                    document.getElementById(
+                        "dynamicStartDistanceInput"
+                    ).value;
+
+
+                const endDistance =
+                    document.getElementById(
+                        "dynamicEndDistanceInput"
+                    ).value;
+
+
+                const velocity =
+                    document.getElementById(
+                        "dynamicVelocityInput"
+                    ).value;
+
+
+                const button =
+                    document.getElementById(
+                        "dynamicButton"
+                    );
+
+
+                button.disabled = true;
+
+                button.textContent =
+                    "Scenario läuft...";
+
+
+                document.getElementById(
+                    "scenarioStatus"
+                ).textContent =
+                    "Wird vorbereitet...";
+
+
+                try {
+
+                    const url =
+                        "/api/dynamic/start"
+                        + `?start_distance_m=${startDistance}`
+                        + `&end_distance_m=${endDistance}`
+                        + `&velocity_kmh=${velocity}`;
+
+
+                    const data =
+                        await apiRequest(
+                            url,
+                            {
+                                method: "POST"
+                            }
+                        );
+
+
+                    document.getElementById(
+                        "requestedDistance"
+                    ).textContent =
+                        Number(
+                            data.start_distance
+                        ).toFixed(2);
+
+
+                    document.getElementById(
+                        "radestDistance"
+                    ).textContent =
+                        Number(
+                            data.start_distance
+                        ).toFixed(2);
+
+
+                    document.getElementById(
+                        "scenarioDuration"
+                    ).textContent =
+                        Number(
+                            data.duration_s
+                        ).toFixed(2);
+
+
+                    document.getElementById(
+                        "scenarioProgress"
+                    ).textContent =
+                        "0.0 %";
+
+
+                    document.getElementById(
+                        "scenarioStatus"
+                    ).textContent =
+                        "Läuft";
+
+
+                    if (data.log_file) {
+
+                        document.getElementById(
+                            "logFile"
+                        ).textContent =
+                            data.log_file;
+
+                    }
+
+
+                    startLiveMeasurement();
+
+                }
+
+                catch (error) {
+
+                    button.disabled = false;
+
+                    button.textContent =
+                        "Scenario starten";
+
+
+                    document.getElementById(
+                        "scenarioStatus"
+                    ).textContent =
+                        "Fehler";
+
+
+                    showError(
+                        error.message
+                    );
+
+                }
+            }
+
+
+            // ====================================
             // WEBSOCKET STARTEN
             // ====================================
 
@@ -1102,6 +1369,40 @@ def index():
                             stopLiveMeasurement();
 
                         }
+
+
+                        if (
+                            message.type
+                            === "complete"
+                        ) {
+
+                            document.getElementById(
+                                "scenarioStatus"
+                            ).textContent =
+                                "Beendet";
+
+
+                            document.getElementById(
+                                "scenarioProgress"
+                            ).textContent =
+                                "100.0 %";
+
+
+                            const dynamicButton =
+                                document.getElementById(
+                                    "dynamicButton"
+                                );
+
+
+                            dynamicButton.disabled = false;
+
+                            dynamicButton.textContent =
+                                "Scenario erneut starten";
+
+
+                            stopLiveMeasurement();
+
+                        }
                     };
 
 
@@ -1141,6 +1442,40 @@ def index():
             function updateMeasurement(
                 data
             ) {
+
+                if (
+                    data.test_type
+                    === "dynamic"
+                ) {
+
+                    document.getElementById(
+                        "scenarioDuration"
+                    ).textContent =
+                        Number(
+                            data.scenario_duration_s
+                        ).toFixed(2);
+
+
+                    document.getElementById(
+                        "scenarioProgress"
+                    ).textContent =
+                        (
+                            Number(
+                                data.scenario_progress
+                            )
+                            * 100
+                        ).toFixed(1)
+                        + " %";
+
+
+                    document.getElementById(
+                        "scenarioStatus"
+                    ).textContent =
+                        data.scenario_done
+                        ? "Beendet"
+                        : "Läuft";
+
+                }
 
                 document.getElementById(
                     "requestedDistance"
@@ -1380,6 +1715,32 @@ def index():
                     ).disabled = true;
 
 
+                    document.getElementById(
+                        "dynamicButton"
+                    ).disabled = true;
+
+
+                    document.getElementById(
+                        "dynamicButton"
+                    ).textContent =
+                        "Scenario starten";
+
+
+                    document.getElementById(
+                        "dynamicStartDistanceInput"
+                    ).disabled = true;
+
+
+                    document.getElementById(
+                        "dynamicEndDistanceInput"
+                    ).disabled = true;
+
+
+                    document.getElementById(
+                        "dynamicVelocityInput"
+                    ).disabled = true;
+
+
                     resetValues();
 
                 }
@@ -1467,6 +1828,21 @@ def index():
 
                 document.getElementById(
                     "logFile"
+                ).textContent = "-";
+
+
+                document.getElementById(
+                    "scenarioStatus"
+                ).textContent = "-";
+
+
+                document.getElementById(
+                    "scenarioDuration"
+                ).textContent = "-";
+
+
+                document.getElementById(
+                    "scenarioProgress"
                 ).textContent = "-";
             }
 
@@ -1711,6 +2087,70 @@ def start_static_measurement(
 
 
 # ==================================================
+# API: DYNAMISCHE MESSUNG STARTEN
+# ==================================================
+
+@app.post("/api/dynamic/start")
+def start_dynamic_measurement(
+    start_distance_m: float,
+    end_distance_m: float,
+    velocity_kmh: float
+):
+
+    if controller is None:
+
+        raise HTTPException(
+            status_code=400,
+            detail="Testsystem ist nicht verbunden"
+        )
+
+
+    try:
+
+        result = (
+            controller.start_dynamic_measurement(
+                start_distance_m=start_distance_m,
+                end_distance_m=end_distance_m,
+                velocity_kmh=velocity_kmh
+            )
+        )
+
+
+        log_file = (
+            controller.start_logging()
+        )
+
+
+        controller.start_measurement_loop(
+            interval_s=0.2
+        )
+
+
+        controller.trigger_dynamic_scenario()
+
+
+        result[
+            "log_file"
+        ] = log_file
+
+
+        return result
+
+
+    except Exception as error:
+
+        controller.stop_measurement_loop()
+
+        controller.stop_logging()
+
+
+        raise HTTPException(
+            status_code=500,
+            detail=str(error)
+        )
+
+
+# ==================================================
 # WEBSOCKET: LIVE-MESSUNG
 # ==================================================
 
@@ -1796,6 +2236,24 @@ async def static_measurement_websocket(
                         last_sequence = (
                             sequence
                         )
+
+
+                    if (
+                        measurement.get(
+                            "scenario_done"
+                        )
+                        and
+                        not active_controller
+                        .is_measurement_running()
+                    ):
+
+                        await websocket.send_json({
+
+                            "type":
+                                "complete"
+                        })
+
+                        break
 
 
             except Exception as error:

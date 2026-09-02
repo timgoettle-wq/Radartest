@@ -310,7 +310,7 @@ class RadestDevice:
     def scenario_get_velocity(self):
         scpi_command = f"SCENARIO:VELOCITY?"
         answer = self.send_scpi_and_print_answer(scpi_command)
-        return int(answer)
+        return float(answer)
 
     # Power Measurement 77 GHz
     def measure_get_77ghz(self, rx_antenna = 0):

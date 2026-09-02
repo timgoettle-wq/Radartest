@@ -39,6 +39,10 @@ class TestController:
 
         self.static_test_active = False
 
+        self.dynamic_test_active = False
+
+        self._measurement_mode = None
+
 
         # ==================================================
         # Precheck
@@ -58,6 +62,23 @@ class TestController:
         self.requested_distance = None
 
         self.radest_distance = None
+
+
+        # ==================================================
+        # Dynamische Messung
+        # ==================================================
+
+        self.dynamic_start_distance = None
+
+        self.dynamic_end_distance = None
+
+        self.dynamic_velocity_kmh = None
+
+        self.dynamic_duration_s = None
+
+        self._scenario_thread = None
+
+        self._scenario_start_ns = None
 
 
         # ==================================================
@@ -180,6 +201,10 @@ class TestController:
 
 
         self.static_test_active = False
+
+        self.dynamic_test_active = False
+
+        self._measurement_mode = None
 
 
         # --------------------------------------------------
@@ -442,6 +467,17 @@ class TestController:
             )
 
 
+        if (
+            self._scenario_thread is not None
+            and
+            self._scenario_thread.is_alive()
+        ):
+
+            raise RuntimeError(
+                "Das dynamische RadEsT-Szenario läuft noch"
+            )
+
+
         # --------------------------------------------------
         # Eventuell noch laufende alte Messung stoppen
         # --------------------------------------------------
@@ -501,8 +537,15 @@ class TestController:
 
         self.static_test_active = True
 
+        self.dynamic_test_active = False
+
+        self._measurement_mode = "static"
+
 
         return {
+
+            "test_type":
+                "static",
 
             "requested_distance":
                 self.requested_distance,
@@ -510,6 +553,239 @@ class TestController:
             "radest_distance":
                 self.radest_distance
         }
+
+
+    # ==================================================
+    # DYNAMISCHE MESSUNG VORBEREITEN
+    # ==================================================
+
+    def start_dynamic_measurement(
+        self,
+        start_distance_m,
+        end_distance_m,
+        velocity_kmh
+    ):
+
+        self._check_connection()
+
+
+        if not self.precheck_done:
+
+            raise RuntimeError(
+                "Vor der dynamischen Messung "
+                "muss der Precheck durchgeführt werden"
+            )
+
+
+        if (
+            self._scenario_thread is not None
+            and
+            self._scenario_thread.is_alive()
+        ):
+
+            raise RuntimeError(
+                "Das dynamische RadEsT-Szenario läuft bereits"
+            )
+
+
+        start_distance_m = float(
+            start_distance_m
+        )
+
+        end_distance_m = float(
+            end_distance_m
+        )
+
+        velocity_kmh = float(
+            velocity_kmh
+        )
+
+
+        if start_distance_m <= 0:
+
+            raise ValueError(
+                "Startdistanz muss größer als 0 m sein"
+            )
+
+
+        if end_distance_m <= 0:
+
+            raise ValueError(
+                "Enddistanz muss größer als 0 m sein"
+            )
+
+
+        if start_distance_m == end_distance_m:
+
+            raise ValueError(
+                "Start- und Enddistanz müssen unterschiedlich sein"
+            )
+
+
+        if velocity_kmh <= 0:
+
+            raise ValueError(
+                "Geschwindigkeit muss größer als 0 km/h sein"
+            )
+
+
+        self.stop_measurement_loop()
+
+        self.stop_logging()
+
+
+        with self._measurement_lock:
+
+            self._latest_measurement = None
+
+            self._measurement_error = None
+
+            self._measurement_sequence = 0
+
+
+        # --------------------------------------------------
+        # Scenario im RadEsT konfigurieren
+        # --------------------------------------------------
+
+        self.radest.scenario_distance_start(
+            start_distance_m
+        )
+
+        self.radest.scenario_distance_end(
+            end_distance_m
+        )
+
+        self.radest.scenario_velocity(
+            velocity_kmh
+        )
+
+
+        # --------------------------------------------------
+        # Tatsächlich übernommene Werte zurücklesen
+        # --------------------------------------------------
+
+        self.dynamic_start_distance = (
+            self.radest.scenario_get_distance_start()
+        )
+
+        self.dynamic_end_distance = (
+            self.radest.scenario_get_distance_end()
+        )
+
+        self.dynamic_velocity_kmh = float(
+            self.radest.scenario_get_velocity()
+        )
+
+
+        if self.dynamic_velocity_kmh <= 0:
+
+            raise RuntimeError(
+                "RadEsT hat keine gültige "
+                "Scenario-Geschwindigkeit übernommen"
+            )
+
+
+        velocity_mps = (
+            self.dynamic_velocity_kmh
+            / 3.6
+        )
+
+        self.dynamic_duration_s = (
+            abs(
+                self.dynamic_end_distance
+                - self.dynamic_start_distance
+            )
+            / velocity_mps
+        )
+
+
+        self.requested_distance = (
+            self.dynamic_start_distance
+        )
+
+        self.radest_distance = (
+            self.dynamic_start_distance
+        )
+
+        self.static_test_active = False
+
+        self.dynamic_test_active = True
+
+        self._measurement_mode = "dynamic"
+
+        self._scenario_start_ns = None
+
+
+        return {
+
+            "start_distance":
+                self.dynamic_start_distance,
+
+            "end_distance":
+                self.dynamic_end_distance,
+
+            "velocity_kmh":
+                self.dynamic_velocity_kmh,
+
+            "duration_s":
+                self.dynamic_duration_s
+        }
+
+
+    # ==================================================
+    # DYNAMISCHES SCENARIO TRIGGERN
+    # ==================================================
+
+    def trigger_dynamic_scenario(self):
+
+        self._check_connection()
+
+
+        if not self.dynamic_test_active:
+
+            raise RuntimeError(
+                "Dynamische Messung wurde noch nicht vorbereitet"
+            )
+
+
+        if not self.is_measurement_running():
+
+            raise RuntimeError(
+                "Messloop muss vor dem Scenario gestartet werden"
+            )
+
+
+        self._scenario_start_ns = (
+            time.perf_counter_ns()
+        )
+
+        self._scenario_thread = (
+            threading.Thread(
+                target=self._run_dynamic_scenario,
+                name="RadestScenario",
+                daemon=True
+            )
+        )
+
+        self._scenario_thread.start()
+
+
+    def _run_dynamic_scenario(self):
+
+        try:
+
+            self.radest.scenario_trigger()
+
+        except Exception as error:
+
+            with self._measurement_lock:
+
+                self._measurement_error = (
+                    "RadEsT Scenario-Fehler: "
+                    + str(error)
+                )
+
+            self._measurement_stop_event.set()
 
 
     # ==================================================
@@ -607,6 +883,9 @@ class TestController:
 
         return {
 
+            "test_type":
+                "static",
+
             "requested_distance":
                 self.requested_distance,
 
@@ -622,6 +901,176 @@ class TestController:
 
 
     # ==================================================
+    # EINEN DYNAMISCHEN MESSPUNKT LESEN
+    # ==================================================
+
+    def read_dynamic_measurement(self):
+
+        self._check_connection()
+
+
+        if not self.dynamic_test_active:
+
+            raise RuntimeError(
+                "Dynamische Messung wurde "
+                "noch nicht gestartet"
+            )
+
+
+        available_signals = (
+            self.vehicle.get_available_signals()
+        )
+
+        wanted_signals = [
+
+            "distance",
+
+            "angle",
+
+            "relative_speed",
+
+            "relative_acceleration"
+        ]
+
+        signals_to_read = [
+
+            signal
+
+            for signal in wanted_signals
+
+            if signal in available_signals
+        ]
+
+
+        if signals_to_read:
+
+            vehicle_values = (
+                self.vehicle.read_signals(
+                    signals_to_read
+                )
+            )
+
+        else:
+
+            vehicle_values = {}
+
+
+        # --------------------------------------------------
+        # Aktuelle Sollposition des RadEsT-Scenario
+        # aus Start, Ende, Geschwindigkeit und Zeit bilden.
+        # Während das Scenario läuft, wird derselbe
+        # RadEsT-Socket nicht parallel abgefragt.
+        # --------------------------------------------------
+
+        if self._scenario_start_ns is None:
+
+            scenario_elapsed_s = 0.0
+
+        else:
+
+            scenario_elapsed_s = max(
+                0.0,
+                (
+                    time.perf_counter_ns()
+                    - self._scenario_start_ns
+                ) / 1_000_000_000
+            )
+
+
+        progress = min(
+            1.0,
+            scenario_elapsed_s
+            / self.dynamic_duration_s
+        )
+
+        radest_distance = (
+            self.dynamic_start_distance
+            + (
+                self.dynamic_end_distance
+                - self.dynamic_start_distance
+            )
+            * progress
+        )
+
+        scenario_done = (
+            self._scenario_start_ns is not None
+            and
+            progress >= 1.0
+        )
+
+
+        vehicle_distance = (
+            vehicle_values.get(
+                "distance",
+                {}
+            ).get(
+                "value"
+            )
+        )
+
+
+        if vehicle_distance is None:
+
+            distance_error = None
+
+        else:
+
+            distance_error = (
+                vehicle_distance
+                - radest_distance
+            )
+
+
+        self.requested_distance = (
+            radest_distance
+        )
+
+        self.radest_distance = (
+            radest_distance
+        )
+
+
+        return {
+
+            "test_type":
+                "dynamic",
+
+            "requested_distance":
+                radest_distance,
+
+            "radest_distance":
+                radest_distance,
+
+            "vehicle":
+                vehicle_values,
+
+            "distance_error":
+                distance_error,
+
+            "scenario_start_distance":
+                self.dynamic_start_distance,
+
+            "scenario_end_distance":
+                self.dynamic_end_distance,
+
+            "scenario_velocity_kmh":
+                self.dynamic_velocity_kmh,
+
+            "scenario_duration_s":
+                self.dynamic_duration_s,
+
+            "scenario_elapsed_s":
+                scenario_elapsed_s,
+
+            "scenario_progress":
+                progress,
+
+            "scenario_done":
+                scenario_done
+        }
+
+
+    # ==================================================
     # HINTERGRUND-MESSLOOP STARTEN
     # ==================================================
 
@@ -633,11 +1082,14 @@ class TestController:
         self._check_connection()
 
 
-        if not self.static_test_active:
+        if not (
+            self.static_test_active
+            or
+            self.dynamic_test_active
+        ):
 
             raise RuntimeError(
-                "Statische Messung wurde "
-                "noch nicht gestartet"
+                "Messung wurde noch nicht vorbereitet"
             )
 
 
@@ -735,9 +1187,17 @@ class TestController:
                 # Fahrzeug EINMAL abfragen
                 # ------------------------------------------
 
-                measurement = (
-                    self.read_static_measurement()
-                )
+                if self._measurement_mode == "dynamic":
+
+                    measurement = (
+                        self.read_dynamic_measurement()
+                    )
+
+                else:
+
+                    measurement = (
+                        self.read_static_measurement()
+                    )
 
 
                 # ------------------------------------------
@@ -839,6 +1299,13 @@ class TestController:
                     )
 
 
+                # Ein dynamisches Scenario endet automatisch,
+                # sobald die berechnete Enddistanz erreicht ist.
+                if measurement.get("scenario_done"):
+
+                    break
+
+
             except Exception as error:
 
                 # ------------------------------------------
@@ -883,6 +1350,13 @@ class TestController:
                 self._measurement_stop_event.wait(
                     remaining
                 )
+
+
+        if self._measurement_mode == "dynamic":
+
+            self.dynamic_test_active = False
+
+            self.stop_logging()
 
 
     # ==================================================
@@ -1041,7 +1515,7 @@ class TestController:
 
 
         # --------------------------------------------------
-        # Statischen Test im TestRun registrieren
+        # Test im TestRun registrieren
         # --------------------------------------------------
 
         if (
@@ -1057,6 +1531,34 @@ class TestController:
 
                 radest_distance=
                     self.radest_distance,
+
+                log_file=
+                    log_file
+            )
+
+
+        elif (
+            self.test_run is not None
+            and
+            self.dynamic_test_active
+        ):
+
+            self.test_run.start_dynamic_test(
+
+                parameters={
+
+                    "start_distance_m":
+                        self.dynamic_start_distance,
+
+                    "end_distance_m":
+                        self.dynamic_end_distance,
+
+                    "velocity_kmh":
+                        self.dynamic_velocity_kmh,
+
+                    "duration_s":
+                        self.dynamic_duration_s
+                },
 
                 log_file=
                     log_file
