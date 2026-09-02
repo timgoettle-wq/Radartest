@@ -4,6 +4,6 @@ __pycache__/
 *.log
 .env
 .vscode/
-logs/*.csv
-logs/*.txt
-test_run/[0-9]*/
+
+logs/
+test_runs/
