@@ -275,6 +275,15 @@ def index():
             </button>
 
 
+            <button
+                id="skipPrecheckButton"
+                onclick="skipPrecheck()"
+                disabled
+            >
+                Precheck überspringen
+            </button>
+
+
             <p>
                 Polarisation:
                 <span
@@ -719,6 +728,11 @@ def index():
                         "precheckButton"
                     ).disabled = true;
 
+
+                    document.getElementById(
+                        "skipPrecheckButton"
+                    ).disabled = true;
+
                 }
 
                 catch (error) {
@@ -799,6 +813,11 @@ def index():
                     // darf der RadEsT Precheck gestartet werden
                     document.getElementById(
                         "precheckButton"
+                    ).disabled = false;
+
+
+                    document.getElementById(
+                        "skipPrecheckButton"
                     ).disabled = false;
 
                 }
@@ -1053,34 +1072,12 @@ def index():
                         data.power;
 
 
-                    document.getElementById(
-                        "distanceInput"
-                    ).disabled = false;
+                    enableMeasurementControls();
 
 
                     document.getElementById(
-                        "staticButton"
-                    ).disabled = false;
-
-
-                    document.getElementById(
-                        "dynamicStartDistanceInput"
-                    ).disabled = false;
-
-
-                    document.getElementById(
-                        "dynamicEndDistanceInput"
-                    ).disabled = false;
-
-
-                    document.getElementById(
-                        "dynamicVelocityInput"
-                    ).disabled = false;
-
-
-                    document.getElementById(
-                        "dynamicButton"
-                    ).disabled = false;
+                        "skipPrecheckButton"
+                    ).disabled = true;
 
 
                     button.textContent =
@@ -1104,6 +1101,74 @@ def index():
                         error.message
                     );
 
+                }
+            }
+
+
+            async function skipPrecheck() {
+
+                clearError();
+
+                const button =
+                    document.getElementById(
+                        "skipPrecheckButton"
+                    );
+
+                button.disabled = true;
+
+                try {
+
+                    await apiRequest(
+                        "/api/precheck/skip",
+                        {
+                            method: "POST"
+                        }
+                    );
+
+                    document.getElementById(
+                        "polarization"
+                    ).textContent = "Übersprungen";
+
+                    document.getElementById(
+                        "frequency"
+                    ).textContent = "Übersprungen";
+
+                    document.getElementById(
+                        "power"
+                    ).textContent = "Übersprungen";
+
+                    button.textContent =
+                        "Precheck übersprungen";
+
+                    enableMeasurementControls();
+
+                }
+
+                catch (error) {
+
+                    button.disabled = false;
+
+                    showError(
+                        error.message
+                    );
+
+                }
+            }
+
+
+            function enableMeasurementControls() {
+
+                for (const id of [
+                    "distanceInput",
+                    "staticButton",
+                    "dynamicStartDistanceInput",
+                    "dynamicEndDistanceInput",
+                    "dynamicVelocityInput",
+                    "dynamicButton"
+                ]) {
+                    document.getElementById(
+                        id
+                    ).disabled = false;
                 }
             }
 
@@ -1767,6 +1832,17 @@ def index():
 
 
                     document.getElementById(
+                        "skipPrecheckButton"
+                    ).disabled = true;
+
+
+                    document.getElementById(
+                        "skipPrecheckButton"
+                    ).textContent =
+                        "Precheck überspringen";
+
+
+                    document.getElementById(
                         "staticButton"
                     ).disabled = true;
 
@@ -2092,6 +2168,26 @@ def run_precheck():
 
     except Exception as error:
 
+        raise HTTPException(
+            status_code=500,
+            detail=str(error)
+        )
+
+
+@app.post("/api/precheck/skip")
+@serialized_controller_access
+def skip_precheck():
+
+    if controller is None:
+
+        raise HTTPException(
+            status_code=400,
+            detail="Testsystem ist nicht verbunden"
+        )
+
+    try:
+        return controller.skip_precheck()
+    except Exception as error:
         raise HTTPException(
             status_code=500,
             detail=str(error)

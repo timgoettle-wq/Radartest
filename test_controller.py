@@ -37,6 +37,7 @@ class TestController:
         self.connected = False
 
         self.precheck_done = False
+        self.precheck_skipped = False
 
         self.static_test_active = False
 
@@ -392,6 +393,7 @@ class TestController:
 
 
         self.precheck_done = False
+        self.precheck_skipped = False
 
 
         # --------------------------------------------------
@@ -425,9 +427,16 @@ class TestController:
 
 
         self.precheck_done = True
+        self.precheck_skipped = False
 
 
         result = {
+
+            "status":
+                "completed",
+
+            "skipped":
+                False,
 
             "polarization":
                 self.polarization,
@@ -454,6 +463,31 @@ class TestController:
         return result
 
 
+    def skip_precheck(self):
+
+        self._check_connection()
+
+        self.precheck_done = True
+        self.precheck_skipped = True
+
+        self.polarization = None
+        self.frequency_range = None
+        self.power = None
+
+        result = {
+            "status": "skipped",
+            "skipped": True,
+            "reason": "skipped_by_user"
+        }
+
+        if self.test_run is not None:
+            self.test_run.set_precheck(
+                result
+            )
+
+        return result
+
+
     # ==================================================
     # PRECHECK-ERGEBNIS
     # ==================================================
@@ -472,7 +506,10 @@ class TestController:
                 self.power,
 
             "done":
-                self.precheck_done
+                self.precheck_done,
+
+            "skipped":
+                self.precheck_skipped
         }
 
 
