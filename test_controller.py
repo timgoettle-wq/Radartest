@@ -3,6 +3,7 @@ import threading
 import time
 
 from diagnostics.vehicle import VehicleDiagnostic
+from database.database import get_vehicle
 from radest.device import RadestDevice
 from measurement_logger import MeasurementLogger
 from test_run import TestRun
@@ -79,6 +80,9 @@ class TestController:
         self._scenario_thread = None
 
         self._scenario_start_ns = None
+        self._scenario_trigger_requested_ns = None
+        self._scenario_trigger_call_ns = None
+        self._scenario_trigger_returned_ns = None
 
 
         # ==================================================
@@ -176,6 +180,12 @@ class TestController:
 
     def disconnect(self):
 
+        measurement_was_active = (
+            self.static_test_active
+            or self.dynamic_test_active
+            or self.is_measurement_running()
+        )
+
         # --------------------------------------------------
         # Hintergrundmessung stoppen
         # --------------------------------------------------
@@ -190,7 +200,18 @@ class TestController:
         # im TestRun abgeschlossen.
         # --------------------------------------------------
 
-        self.stop_logging()
+        self.stop_logging(
+            status=(
+                "aborted"
+                if measurement_was_active
+                else "finished"
+            ),
+            reason=(
+                "system_disconnected"
+                if measurement_was_active
+                else None
+            )
+        )
 
 
         # --------------------------------------------------
@@ -269,7 +290,8 @@ class TestController:
         # --------------------------------------------------
 
         self.test_run = TestRun(
-            vehicle_id=self.vehicle_id
+            vehicle_id=self.vehicle_id,
+            vehicle_data=get_vehicle(self.vehicle_id)
         )
 
 
@@ -287,7 +309,11 @@ class TestController:
     # TESTRUN ABSCHLIESSEN
     # ==================================================
 
-    def finish_test_run(self):
+    def finish_test_run(
+        self,
+        status=None,
+        reason=None
+    ):
 
         if self.test_run is None:
             return
@@ -295,7 +321,10 @@ class TestController:
 
         try:
 
-            self.test_run.finish()
+            self.test_run.finish(
+                status=status,
+                reason=reason
+            )
 
         except Exception:
 
@@ -714,6 +743,9 @@ class TestController:
         self._measurement_mode = "dynamic"
 
         self._scenario_start_ns = None
+        self._scenario_trigger_requested_ns = None
+        self._scenario_trigger_call_ns = None
+        self._scenario_trigger_returned_ns = None
 
 
         return {
@@ -755,9 +787,15 @@ class TestController:
             )
 
 
-        self._scenario_start_ns = (
+        self._scenario_trigger_requested_ns = (
             time.perf_counter_ns()
         )
+
+        if self.test_run is not None:
+            self.test_run.update_active_test({
+                "scenario_trigger_requested_ns":
+                    self._scenario_trigger_requested_ns
+            })
 
         self._scenario_thread = (
             threading.Thread(
@@ -774,9 +812,37 @@ class TestController:
 
         try:
 
+            self._scenario_trigger_call_ns = (
+                time.perf_counter_ns()
+            )
+
+            self._scenario_start_ns = (
+                self._scenario_trigger_call_ns
+            )
+
+            if self.test_run is not None:
+                self.test_run.update_active_test({
+                    "scenario_trigger_call_ns":
+                        self._scenario_trigger_call_ns
+                })
+
             self.radest.scenario_trigger()
 
+            self._scenario_trigger_returned_ns = (
+                time.perf_counter_ns()
+            )
+
+            if self.test_run is not None:
+                self.test_run.update_active_test({
+                    "scenario_trigger_returned_ns":
+                        self._scenario_trigger_returned_ns
+                })
+
         except Exception as error:
+
+            self._scenario_trigger_returned_ns = (
+                time.perf_counter_ns()
+            )
 
             with self._measurement_lock:
 
@@ -784,6 +850,18 @@ class TestController:
                     "RadEsT Scenario-Fehler: "
                     + str(error)
                 )
+
+            if self.test_run is not None:
+                self.test_run.update_active_test({
+                    "scenario_trigger_returned_ns":
+                        self._scenario_trigger_returned_ns,
+                    "scenario_error": str(error)
+                })
+
+            self._write_error_measurement(
+                error,
+                error_type="radest_scenario"
+            )
 
             self._measurement_stop_event.set()
 
@@ -855,11 +933,15 @@ class TestController:
         # welche DIDs dafür gelesen werden müssen.
         # --------------------------------------------------
 
+        vehicle_request_start_ns = time.perf_counter_ns()
+
         vehicle_values = (
             self.vehicle.read_signals(
                 signals_to_read
             )
         )
+
+        vehicle_response_ns = time.perf_counter_ns()
 
 
         vehicle_distance = (
@@ -886,11 +968,29 @@ class TestController:
             "test_type":
                 "static",
 
+            "sample_status":
+                "ok",
+
             "requested_distance":
                 self.requested_distance,
 
             "radest_distance":
                 self.radest_distance,
+
+            "radest_distance_source":
+                "device_readback",
+
+            "vehicle_request_start_ns":
+                vehicle_request_start_ns,
+
+            "vehicle_response_ns":
+                vehicle_response_ns,
+
+            "vehicle_read_duration_ms":
+                (
+                    vehicle_response_ns
+                    - vehicle_request_start_ns
+                ) / 1_000_000,
 
             "vehicle":
                 vehicle_values,
@@ -944,15 +1044,21 @@ class TestController:
 
         if signals_to_read:
 
+            vehicle_request_start_ns = time.perf_counter_ns()
+
             vehicle_values = (
                 self.vehicle.read_signals(
                     signals_to_read
                 )
             )
 
+            vehicle_response_ns = time.perf_counter_ns()
+
         else:
 
             vehicle_values = {}
+            vehicle_request_start_ns = None
+            vehicle_response_ns = None
 
 
         # --------------------------------------------------
@@ -996,6 +1102,8 @@ class TestController:
             self._scenario_start_ns is not None
             and
             progress >= 1.0
+            and
+            self._scenario_trigger_returned_ns is not None
         )
 
 
@@ -1035,11 +1143,36 @@ class TestController:
             "test_type":
                 "dynamic",
 
+            "sample_status":
+                "ok",
+
             "requested_distance":
                 radest_distance,
 
             "radest_distance":
                 radest_distance,
+
+            "radest_distance_source":
+                "time_based_estimate",
+
+            "estimated_scenario_distance":
+                radest_distance,
+
+            "vehicle_request_start_ns":
+                vehicle_request_start_ns,
+
+            "vehicle_response_ns":
+                vehicle_response_ns,
+
+            "vehicle_read_duration_ms":
+                (
+                    None
+                    if vehicle_request_start_ns is None
+                    else (
+                        vehicle_response_ns
+                        - vehicle_request_start_ns
+                    ) / 1_000_000
+                ),
 
             "vehicle":
                 vehicle_values,
@@ -1066,7 +1199,16 @@ class TestController:
                 progress,
 
             "scenario_done":
-                scenario_done
+                scenario_done,
+
+            "scenario_trigger_requested_ns":
+                self._scenario_trigger_requested_ns,
+
+            "scenario_trigger_call_ns":
+                self._scenario_trigger_call_ns,
+
+            "scenario_trigger_returned_ns":
+                self._scenario_trigger_returned_ns
         }
 
 
@@ -1121,6 +1263,14 @@ class TestController:
                 "Messintervall muss größer "
                 "als 0 Sekunden sein"
             )
+
+        if self.test_run is not None:
+            self.test_run.update_active_test({
+                "measurement_interval_s_requested":
+                    self._measurement_interval_s,
+                "sampling_rate_hz_requested":
+                    1.0 / self._measurement_interval_s
+            })
 
 
         # --------------------------------------------------
@@ -1266,6 +1416,10 @@ class TestController:
                         "elapsed_s"
                     ] = elapsed_s
 
+                    measurement[
+                        "measurement_interval_s"
+                    ] = self._measurement_interval_s
+
 
                     # --------------------------------------
                     # Aktuellen Messwert bereitstellen
@@ -1277,9 +1431,6 @@ class TestController:
                     self._latest_measurement = (
                         measurement
                     )
-
-
-                    self._measurement_error = None
 
 
                 # ------------------------------------------
@@ -1318,6 +1469,10 @@ class TestController:
                         error
                     )
 
+                self._write_error_measurement(
+                    error
+                )
+
 
                 # Bei Diagnose- oder Loggingfehler
                 # Hintergrundmessung beenden.
@@ -1352,11 +1507,101 @@ class TestController:
                 )
 
 
-        if self._measurement_mode == "dynamic":
+        if self._measurement_error is not None:
 
+            self.static_test_active = False
             self.dynamic_test_active = False
 
-            self.stop_logging()
+            self.stop_logging(
+                status="failed",
+                reason="measurement_error",
+                error=self._measurement_error
+            )
+
+        elif self._measurement_mode == "dynamic":
+
+            with self._measurement_lock:
+                scenario_completed = bool(
+                    self._latest_measurement
+                    and self._latest_measurement.get(
+                        "scenario_done"
+                    )
+                )
+
+            if scenario_completed:
+                self.dynamic_test_active = False
+
+                self.stop_logging(
+                    status="finished",
+                    reason="scenario_completed"
+                )
+
+
+    def _write_error_measurement(
+        self,
+        error,
+        error_type=None
+    ):
+
+        timestamp_ns = time.perf_counter_ns()
+        timestamp_unix_ns = time.time_ns()
+
+        elapsed_s = (
+            None
+            if self._measurement_start_ns is None
+            else (
+                timestamp_ns
+                - self._measurement_start_ns
+            ) / 1_000_000_000
+        )
+
+        with self._measurement_lock:
+            self._measurement_sequence += 1
+
+            measurement = {
+                "test_type": self._measurement_mode,
+                "sample_status": "error",
+                "error_type": error_type or type(error).__name__,
+                "error_message": str(error),
+                "sequence": self._measurement_sequence,
+                "timestamp_ns": timestamp_ns,
+                "timestamp_unix_ns": timestamp_unix_ns,
+                "elapsed_s": elapsed_s,
+                "measurement_interval_s": self._measurement_interval_s,
+                "requested_distance": self.requested_distance,
+                "radest_distance": self.radest_distance,
+                "radest_distance_source": (
+                    "time_based_estimate"
+                    if self._measurement_mode == "dynamic"
+                    else "device_readback"
+                ),
+                "estimated_scenario_distance": (
+                    self.radest_distance
+                    if self._measurement_mode == "dynamic"
+                    else None
+                ),
+                "vehicle": {},
+                "scenario_start_distance": self.dynamic_start_distance,
+                "scenario_end_distance": self.dynamic_end_distance,
+                "scenario_velocity_kmh": self.dynamic_velocity_kmh,
+                "scenario_duration_s": self.dynamic_duration_s,
+                "scenario_trigger_requested_ns":
+                    self._scenario_trigger_requested_ns,
+                "scenario_trigger_call_ns":
+                    self._scenario_trigger_call_ns,
+                "scenario_trigger_returned_ns":
+                    self._scenario_trigger_returned_ns,
+            }
+
+            self._latest_measurement = measurement
+
+        if (
+            self.logging_active
+            and self.measurement_logger is not None
+        ):
+            self.measurement_logger.write_measurement(
+                measurement
+            )
 
 
     # ==================================================
@@ -1493,6 +1738,11 @@ class TestController:
         self.measurement_logger = (
             MeasurementLogger(
                 vehicle_id=self.vehicle_id,
+                run_id=(
+                    self.test_run.get_run_id()
+                    if self.test_run is not None
+                    else None
+                ),
                 log_directory=log_directory
             )
         )
@@ -1524,7 +1774,7 @@ class TestController:
             self.static_test_active
         ):
 
-            self.test_run.start_static_test(
+            test_id = self.test_run.start_static_test(
 
                 requested_distance=
                     self.requested_distance,
@@ -1543,7 +1793,7 @@ class TestController:
             self.dynamic_test_active
         ):
 
-            self.test_run.start_dynamic_test(
+            test_id = self.test_run.start_dynamic_test(
 
                 parameters={
 
@@ -1564,6 +1814,13 @@ class TestController:
                     log_file
             )
 
+        else:
+            test_id = None
+
+        self.measurement_logger.set_test_id(
+            test_id
+        )
+
 
         return log_file
 
@@ -1572,7 +1829,12 @@ class TestController:
     # LOGGING STOPPEN
     # ==================================================
 
-    def stop_logging(self):
+    def stop_logging(
+        self,
+        status="finished",
+        reason=None,
+        error=None
+    ):
 
         # --------------------------------------------------
         # CSV schließen
@@ -1600,11 +1862,54 @@ class TestController:
 
             try:
 
-                self.test_run.finish_active_test()
+                self.test_run.update_active_test({
+                    "sample_count":
+                        self._measurement_sequence
+                })
+
+                self.test_run.finish_active_test(
+                    status=status,
+                    reason=reason,
+                    error=error
+                )
 
             except Exception:
 
                 pass
+
+
+    def stop_active_measurement(self):
+
+        was_dynamic = self.dynamic_test_active
+
+        self.stop_measurement_loop()
+
+        self.static_test_active = False
+        self.dynamic_test_active = False
+        self._measurement_mode = None
+
+        status = (
+            "aborted"
+            if was_dynamic
+            else "finished"
+        )
+
+        reason = (
+            "stopped_by_user_before_scenario_end"
+            if was_dynamic
+            else "stopped_by_user"
+        )
+
+        self.stop_logging(
+            status=status,
+            reason=reason
+        )
+
+        return {
+            "stopped": True,
+            "status": status,
+            "reason": reason
+        }
 
 
     # ==================================================

@@ -1,6 +1,11 @@
 import json
+import subprocess
+import threading
 from datetime import datetime
 from pathlib import Path
+
+
+RESULT_SCHEMA_VERSION = 2
 
 
 class TestRun:
@@ -8,10 +13,13 @@ class TestRun:
     def __init__(
         self,
         vehicle_id,
+        vehicle_data=None,
         base_directory=None
     ):
 
         self.vehicle_id = vehicle_id
+        self.vehicle_data = vehicle_data
+        self._lock = threading.RLock()
 
         # --------------------------------------------------
         # Basisordner
@@ -82,11 +90,21 @@ class TestRun:
 
         self.data = {
 
+            "schema_version":
+                RESULT_SCHEMA_VERSION,
+
             "run_id":
                 self.run_id,
 
             "vehicle_id":
                 self.vehicle_id,
+
+            "vehicle":
+                self.vehicle_data,
+
+            "software": {
+                "git_commit": self._get_git_commit()
+            },
 
             "start_time":
                 self._now(),
@@ -168,7 +186,12 @@ class TestRun:
         self.finish_active_test()
 
 
+        test_id = self._next_test_id()
+
         test = {
+
+            "test_id":
+                test_id,
 
             "type":
                 "static",
@@ -212,6 +235,8 @@ class TestRun:
 
         self._save()
 
+        return test_id
+
 
     # ==================================================
     # DYNAMISCHER TEST
@@ -229,7 +254,12 @@ class TestRun:
         self.finish_active_test()
 
 
+        test_id = self._next_test_id()
+
         test = {
+
+            "test_id":
+                test_id,
 
             "type":
                 "dynamic",
@@ -270,12 +300,33 @@ class TestRun:
 
         self._save()
 
+        return test_id
+
+
+    # ==================================================
+    # AKTIVEN TEST ERGÄNZEN
+    # ==================================================
+
+    def update_active_test(self, values):
+
+        if self.active_test_index is None:
+            return
+
+        with self._lock:
+            self.data["tests"][self.active_test_index].update(values)
+            self._save()
+
 
     # ==================================================
     # AKTIVEN TEST ABSCHLIESSEN
     # ==================================================
 
-    def finish_active_test(self):
+    def finish_active_test(
+        self,
+        status="finished",
+        reason=None,
+        error=None
+    ):
 
         if self.active_test_index is None:
             return
@@ -297,7 +348,13 @@ class TestRun:
 
             test[
                 "status"
-            ] = "finished"
+            ] = status
+
+            if reason is not None:
+                test["end_reason"] = reason
+
+            if error is not None:
+                test["error"] = error
 
 
         self.active_test_index = None
@@ -310,7 +367,11 @@ class TestRun:
     # KOMPLETTEN TESTRUN ABSCHLIESSEN
     # ==================================================
 
-    def finish(self):
+    def finish(
+        self,
+        status=None,
+        reason=None
+    ):
 
         self.finish_active_test()
 
@@ -320,9 +381,28 @@ class TestRun:
         ] = self._now()
 
 
+        if status is None:
+            test_statuses = {
+                test.get("status")
+                for test in self.data["tests"]
+            }
+
+            status = (
+                "completed_with_errors"
+                if "failed" in test_statuses
+                else (
+                    "aborted"
+                    if "aborted" in test_statuses
+                    else "finished"
+                )
+            )
+
         self.data[
             "status"
-        ] = "finished"
+        ] = status
+
+        if reason is not None:
+            self.data["end_reason"] = reason
 
 
         self._save()
@@ -362,29 +442,54 @@ class TestRun:
         # Dadurch wird run.json nicht halb geschrieben,
         # falls während des Schreibens etwas passiert.
 
-        temp_file = (
-            self.metadata_file
-            .with_suffix(".tmp")
-        )
-
-
-        with open(
-            temp_file,
-            "w",
-            encoding="utf-8"
-        ) as file:
-
-            json.dump(
-                self.data,
-                file,
-                indent=4,
-                ensure_ascii=False
+        with self._lock:
+            temp_file = (
+                self.metadata_file
+                .with_suffix(".tmp")
             )
 
 
-        temp_file.replace(
-            self.metadata_file
+            with open(
+                temp_file,
+                "w",
+                encoding="utf-8"
+            ) as file:
+
+                json.dump(
+                    self.data,
+                    file,
+                    indent=4,
+                    ensure_ascii=False
+                )
+
+
+            temp_file.replace(
+                self.metadata_file
+            )
+
+
+    def _next_test_id(self):
+
+        return (
+            f"{self.run_id}_test_"
+            f"{len(self.data['tests']) + 1:03d}"
         )
+
+
+    def _get_git_commit(self):
+
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=Path(__file__).resolve().parent,
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=2,
+            )
+            return result.stdout.strip() or None
+        except (OSError, subprocess.SubprocessError):
+            return None
 
 
     # ==================================================
@@ -397,6 +502,6 @@ class TestRun:
             datetime.now()
             .astimezone()
             .isoformat(
-                timespec="seconds"
+                timespec="microseconds"
             )
         )

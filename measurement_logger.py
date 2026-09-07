@@ -9,10 +9,13 @@ class MeasurementLogger:
     def __init__(
         self,
         vehicle_id,
+        run_id=None,
         log_directory=None
     ):
 
         self.vehicle_id = vehicle_id
+        self.run_id = run_id
+        self.test_id = None
 
         if log_directory is None:
 
@@ -56,6 +59,11 @@ class MeasurementLogger:
         self._lock = threading.Lock()
 
         self.active = False
+
+
+    def set_test_id(self, test_id):
+
+        self.test_id = test_id
 
 
     # ==================================================
@@ -138,9 +146,31 @@ class MeasurementLogger:
     ):
 
         row = {
+            "run_id":
+                self.run_id,
+
+            "test_id":
+                self.test_id,
+
             "test_type":
                 measurement.get(
                     "test_type"
+                ),
+
+            "sample_status":
+                measurement.get(
+                    "sample_status",
+                    "ok"
+                ),
+
+            "error_type":
+                measurement.get(
+                    "error_type"
+                ),
+
+            "error_message":
+                measurement.get(
+                    "error_message"
                 ),
 
             "sequence":
@@ -163,6 +193,26 @@ class MeasurementLogger:
                     "elapsed_s"
                 ),
 
+            "measurement_interval_s":
+                measurement.get(
+                    "measurement_interval_s"
+                ),
+
+            "vehicle_request_start_ns":
+                measurement.get(
+                    "vehicle_request_start_ns"
+                ),
+
+            "vehicle_response_ns":
+                measurement.get(
+                    "vehicle_response_ns"
+                ),
+
+            "vehicle_read_duration_ms":
+                measurement.get(
+                    "vehicle_read_duration_ms"
+                ),
+
             "requested_distance_m":
                 measurement.get(
                     "requested_distance"
@@ -171,6 +221,16 @@ class MeasurementLogger:
             "radest_distance_m":
                 measurement.get(
                     "radest_distance"
+                ),
+
+            "radest_distance_source":
+                measurement.get(
+                    "radest_distance_source"
+                ),
+
+            "estimated_scenario_distance_m":
+                measurement.get(
+                    "estimated_scenario_distance"
                 ),
 
             "distance_error_m":
@@ -211,6 +271,21 @@ class MeasurementLogger:
             "scenario_done":
                 measurement.get(
                     "scenario_done"
+                ),
+
+            "scenario_trigger_requested_ns":
+                measurement.get(
+                    "scenario_trigger_requested_ns"
+                ),
+
+            "scenario_trigger_call_ns":
+                measurement.get(
+                    "scenario_trigger_call_ns"
+                ),
+
+            "scenario_trigger_returned_ns":
+                measurement.get(
+                    "scenario_trigger_returned_ns"
                 )
         }
 

@@ -1,4 +1,6 @@
 import asyncio
+import threading
+from functools import wraps
 
 from fastapi import (
     FastAPI,
@@ -23,6 +25,18 @@ app = FastAPI(
 
 controller = None
 selected_vehicle_id = None
+controller_lock = threading.RLock()
+
+
+def serialized_controller_access(function):
+
+    @wraps(function)
+    def wrapper(*args, **kwargs):
+
+        with controller_lock:
+            return function(*args, **kwargs)
+
+    return wrapper
 
 
 # ==================================================
@@ -452,10 +466,10 @@ def index():
 
             <button
                 id="stopButton"
-                onclick="stopLiveMeasurement()"
+                onclick="stopMeasurement()"
                 disabled
             >
-                Live-Anzeige stoppen
+                Messung stoppen
             </button>
 
 
@@ -1613,6 +1627,53 @@ def index():
 
 
             // ====================================
+            // MESSUNG STOPPEN
+            // ====================================
+
+            async function stopMeasurement() {
+
+                clearError();
+
+                try {
+
+                    const data = await apiRequest(
+                        "/api/measurement/stop",
+                        {
+                            method: "POST"
+                        }
+                    );
+
+                    stopLiveMeasurement();
+
+                    document.getElementById(
+                        "scenarioStatus"
+                    ).textContent =
+                        data.status === "aborted"
+                        ? "Abgebrochen"
+                        : "Beendet";
+
+                    document.getElementById(
+                        "dynamicButton"
+                    ).disabled = false;
+
+                    document.getElementById(
+                        "dynamicButton"
+                    ).textContent =
+                        "Scenario erneut starten";
+
+                }
+
+                catch (error) {
+
+                    showError(
+                        error.message
+                    );
+
+                }
+            }
+
+
+            // ====================================
             // WEBSOCKET STOPPEN
             // ====================================
 
@@ -1894,6 +1955,7 @@ def index():
 # ==================================================
 
 @app.post("/api/connect/{vehicle_id}")
+@serialized_controller_access
 def connect_vehicle(
     vehicle_id: int
 ):
@@ -1979,6 +2041,7 @@ def connect_vehicle(
 # ==================================================
 
 @app.post("/api/quick-check")
+@serialized_controller_access
 def run_quick_check():
 
     if controller is None:
@@ -2009,6 +2072,7 @@ def run_quick_check():
 # ==================================================
 
 @app.post("/api/precheck")
+@serialized_controller_access
 def run_precheck():
 
     if controller is None:
@@ -2039,6 +2103,7 @@ def run_precheck():
 # ==================================================
 
 @app.post("/api/static/start")
+@serialized_controller_access
 def start_static_measurement(
     distance_m: float
 ):
@@ -2080,6 +2145,14 @@ def start_static_measurement(
 
     except Exception as error:
 
+        controller.stop_measurement_loop()
+
+        controller.stop_logging(
+            status="failed",
+            reason="start_failed",
+            error=str(error)
+        )
+
         raise HTTPException(
             status_code=500,
             detail=str(error)
@@ -2091,6 +2164,7 @@ def start_static_measurement(
 # ==================================================
 
 @app.post("/api/dynamic/start")
+@serialized_controller_access
 def start_dynamic_measurement(
     start_distance_m: float,
     end_distance_m: float,
@@ -2141,7 +2215,11 @@ def start_dynamic_measurement(
 
         controller.stop_measurement_loop()
 
-        controller.stop_logging()
+        controller.stop_logging(
+            status="failed",
+            reason="start_failed",
+            error=str(error)
+        )
 
 
         raise HTTPException(
@@ -2292,10 +2370,35 @@ async def static_measurement_websocket(
 
 
 # ==================================================
+# API: MESSUNG STOPPEN
+# ==================================================
+
+@app.post("/api/measurement/stop")
+@serialized_controller_access
+def stop_measurement():
+
+    if controller is None:
+
+        raise HTTPException(
+            status_code=400,
+            detail="Testsystem ist nicht verbunden"
+        )
+
+    try:
+        return controller.stop_active_measurement()
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=str(error)
+        )
+
+
+# ==================================================
 # API: TRENNEN
 # ==================================================
 
 @app.post("/api/disconnect")
+@serialized_controller_access
 def disconnect_vehicle():
 
     global controller
