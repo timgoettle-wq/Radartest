@@ -1,0 +1,470 @@
+
+    <!DOCTYPE html>
+
+    <html lang="de">
+
+    <head>
+
+        <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+
+        <title>
+            Radar Testsystem
+        </title>
+
+        <link rel="stylesheet" href="/static/style.css">
+
+    </head>
+
+
+    <body><nav><a href="/">Radartest</a><a href="/database">Datenpflege</a><a href="/docs">API</a></nav>
+
+        <h1>
+            Radar Testsystem
+        </h1>
+
+
+        <!-- =================================== -->
+        <!-- 1. Fahrzeug -->
+        <!-- =================================== -->
+
+        <section>
+
+            <h2>
+                1. Fahrzeug auswählen
+            </h2>
+
+
+            <select id="vehicle">
+                __VEHICLE_OPTIONS__
+            </select>
+
+
+            <button
+                id="connectButton"
+                onclick="connectSystem()"
+            >
+                Verbinden
+            </button>
+
+
+            <button
+                id="disconnectButton"
+                onclick="disconnectSystem()"
+                disabled
+            >
+                Trennen
+            </button>
+
+
+            <p id="status">
+                Nicht verbunden
+            </p>
+
+
+            <p id="signals"></p>
+
+
+            <p>
+                TestRun:
+                <span
+                    id="testRun"
+                    class="value"
+                >
+                    -
+                </span>
+            </p>
+
+        </section>
+
+
+        <!-- =================================== -->
+        <!-- 2. Quick Check -->
+        <!-- =================================== -->
+
+        <section>
+
+            <h2>
+                2. Fahrzeug Quick Check
+            </h2>
+
+
+            <button
+                id="quickCheckButton"
+                onclick="runQuickCheck()"
+                disabled
+            >
+                Quick Check starten
+            </button>
+
+
+            <div id="quickCheckResult">
+
+                <p>
+                    Fehlerspeicher:
+                    <span
+                        id="dtcStatus"
+                        class="value"
+                    >
+                        -
+                    </span>
+                </p>
+
+                <div id="dtcList"></div>
+
+                <p>
+                    Steuergeräte-Identifikation:
+                    <span
+                        id="identificationStatus"
+                        class="value"
+                    >
+                        -
+                    </span>
+                </p>
+
+                <div id="identificationList"></div>
+
+            </div>
+
+        </section>
+
+
+        <!-- =================================== -->
+        <!-- 3. Precheck -->
+        <!-- =================================== -->
+
+        <section>
+
+            <h2>
+                3. RadEsT Precheck
+            </h2>
+
+
+            <button
+                id="precheckButton"
+                onclick="runPrecheck()"
+                disabled
+            >
+                Precheck starten
+            </button>
+
+
+            <button
+                id="skipPrecheckButton"
+                onclick="skipPrecheck()"
+                disabled
+            >
+                Precheck überspringen
+            </button>
+
+
+            <p>
+                Polarisation:
+                <span
+                    id="polarization"
+                    class="value"
+                >
+                    -
+                </span>
+            </p>
+
+
+            <p>
+                Frequenzbereich:
+                <span
+                    id="frequency"
+                    class="value"
+                >
+                    -
+                </span>
+            </p>
+
+
+            <p>
+                Leistung:
+                <span
+                    id="power"
+                    class="value"
+                >
+                    -
+                </span>
+            </p>
+
+        </section>
+
+
+        <!-- =================================== -->
+        <!-- 4. Statische Messung -->
+        <!-- =================================== -->
+
+        <section>
+
+            <h2>
+                4. Statische Messung
+            </h2>
+
+
+            <label for="distanceInput">
+                Distanz:
+            </label>
+
+
+            <input
+                id="distanceInput"
+                type="number"
+                value="7.0"
+                step="0.1"
+                min="0"
+                disabled
+            >
+
+            <span>m</span>
+
+
+            <button
+                id="staticButton"
+                onclick="startStaticMeasurement()"
+                disabled
+            >
+                Messung starten
+            </button>
+
+        </section>
+
+
+        <!-- =================================== -->
+        <!-- 5. Dynamische Messung -->
+        <!-- =================================== -->
+
+        <section>
+
+            <h2>
+                5. Dynamische Messung
+            </h2>
+
+
+            <label for="dynamicStartDistanceInput">
+                Startdistanz:
+            </label>
+
+            <input
+                id="dynamicStartDistanceInput"
+                type="number"
+                value="30.0"
+                step="0.1"
+                min="0.1"
+                disabled
+            >
+
+            <span>m</span>
+
+
+            <label for="dynamicEndDistanceInput">
+                Enddistanz:
+            </label>
+
+            <input
+                id="dynamicEndDistanceInput"
+                type="number"
+                value="5.0"
+                step="0.1"
+                min="0.1"
+                disabled
+            >
+
+            <span>m</span>
+
+
+            <label for="dynamicVelocityInput">
+                Geschwindigkeit:
+            </label>
+
+            <input
+                id="dynamicVelocityInput"
+                type="number"
+                value="20"
+                step="1"
+                min="1"
+                disabled
+            >
+
+            <span>km/h</span>
+
+
+            <button
+                id="dynamicButton"
+                onclick="startDynamicMeasurement()"
+                disabled
+            >
+                Scenario starten
+            </button>
+
+
+            <p>
+                Scenario-Status:
+                <span
+                    id="scenarioStatus"
+                    class="value"
+                >
+                    -
+                </span>
+            </p>
+
+            <p>
+                Aktuelle Phase:
+                <span
+                    id="scenarioPhase"
+                    class="value"
+                >
+                    -
+                </span>
+            </p>
+
+
+            <p>
+                Gesamtdauer:
+                <span
+                    id="scenarioDuration"
+                    class="value"
+                >
+                    -
+                </span>
+                s
+            </p>
+
+
+            <p>
+                Fortschritt:
+                <span
+                    id="scenarioProgress"
+                    class="value"
+                >
+                    -
+                </span>
+            </p>
+
+        </section>
+
+
+        <!-- =================================== -->
+        <!-- 6. Live-Werte -->
+        <!-- =================================== -->
+
+        <section>
+
+            <h2>
+                6. Live-Werte
+            </h2>
+
+
+            <button
+                id="stopButton"
+                onclick="stopMeasurement()"
+                disabled
+            >
+                Messung stoppen
+            </button>
+
+
+            <p>
+                Angefordert:
+                <span
+                    id="requestedDistance"
+                    class="value"
+                >
+                    -
+                </span>
+                m
+            </p>
+
+
+            <p>
+                RadEsT / Scenario-Soll:
+                <span
+                    id="radestDistance"
+                    class="value"
+                >
+                    -
+                </span>
+                m
+            </p>
+
+
+            <p>
+                Fahrzeug:
+                <span
+                    id="vehicleDistance"
+                    class="value"
+                >
+                    -
+                </span>
+                m
+            </p>
+
+
+            <p>
+                Differenz:
+                <span
+                    id="distanceError"
+                    class="value"
+                >
+                    -
+                </span>
+                m
+            </p>
+
+
+            <p>
+                Winkel:
+                <span
+                    id="angle"
+                    class="value"
+                >
+                    -
+                </span>
+            </p>
+
+
+            <p>
+                Relativgeschwindigkeit:
+                <span
+                    id="relativeSpeed"
+                    class="value"
+                >
+                    -
+                </span>
+            </p>
+
+
+            <p>
+                Relativbeschleunigung:
+                <span
+                    id="relativeAcceleration"
+                    class="value"
+                >
+                    -
+                </span>
+            </p>
+
+
+            <p>
+                Logdatei:
+                <span
+                    id="logFile"
+                    class="value"
+                >
+                    -
+                </span>
+            </p>
+
+        </section>
+
+
+        <p id="error"></p>
+
+
+        <script src="/static/test.js" defer></script>
+
+    </body>
+
+    </html>
+    

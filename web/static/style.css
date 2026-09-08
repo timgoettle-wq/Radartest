@@ -1,0 +1,75 @@
+
+
+            body {
+                font-family: Arial, sans-serif;
+                margin: 30px;
+                max-width: 900px;
+            }
+
+            section {
+                margin-top: 30px;
+                padding-top: 10px;
+                border-top: 1px solid #ccc;
+            }
+
+            button,
+            select,
+            input {
+                font-size: 16px;
+                padding: 6px;
+                margin: 4px;
+            }
+
+            .value {
+                font-weight: bold;
+            }
+
+            .dtc {
+                margin-left: 20px;
+            }
+
+            .identification-table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-top: 10px;
+            }
+
+            .identification-table th,
+            .identification-table td {
+                padding: 8px;
+                border: 1px solid #ccc;
+                text-align: left;
+                vertical-align: top;
+            }
+
+            .identification-table th {
+                background: #f3f3f3;
+            }
+
+            #status {
+                margin-top: 15px;
+                font-weight: bold;
+            }
+
+            #error {
+                margin-top: 20px;
+                font-weight: bold;
+                color: red;
+            }
+
+        
+body { background:#f2f5fa;color:#17243b;max-width:1200px;margin:24px auto;padding:0 20px; }
+nav {display:flex;gap:24px;background:#132641;padding:18px 24px;border-radius:14px;}
+nav a {color:white;text-decoration:none;font-weight:600;}
+section {background:white;border:1px solid #dde4ed;border-radius:14px;padding:24px;box-shadow:0 4px 16px #13264108;}
+h1,h2 {letter-spacing:-.025em;}
+button {background:#175dcc;color:white;border:0;border-radius:7px;cursor:pointer;}
+button:disabled {opacity:.45;cursor:default;}
+input,select {border:1px solid #cad3df;border-radius:6px;background:white;max-width:100%;box-sizing:border-box;}
+table {width:100%;border-collapse:collapse;}th,td {padding:10px;border-bottom:1px solid #dde4ed;text-align:left;}
+.table-scroll {overflow:auto;}
+#editor {display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;}
+#editor label {display:flex;flex-direction:column;gap:5px;}
+.notice {color:#53647a;} .danger {background:#ab3232;}
+@media(max-width:600px){body{padding:0 10px;}section{padding:14px;}nav{gap:14px;}}
+

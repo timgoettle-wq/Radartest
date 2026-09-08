@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Radartest · Datenpflege</title>
+<link rel="stylesheet" href="/static/style.css">
+<script src="/static/database.js" defer></script>
+</head>
+<body>
+<nav><a href="/">Radartest</a><a href="/database">Datenpflege</a><a href="/docs">API</a></nav>
+<h1>Fahrzeugdaten pflegen</h1>
+<p class="notice">Konfiguration und Referenzwerte. Beobachtete Referenzen sind kein Nachweis einer Herstellerfreigabe.</p>
+<section>
+<label for="table">Bereich</label><select id="table"></select>
+<button id="new">Neuer Eintrag</button><button id="reload">Aktualisieren</button>
+<p id="message" role="status"></p>
+<div class="table-scroll"><table id="rows"></table></div>
+</section>
+<section id="editSection" hidden>
+<h2 id="editTitle">Eintrag bearbeiten</h2>
+<p class="notice">Hexwerte mit 0x eingeben. Byte-Offsets zählen ab Beginn der vollständigen UDS-Antwort; bei DID-Antworten beginnt die Nutzlast meist bei Byte 3.</p>
+<form id="form">
+<div id="editor"></div>
+<button type="submit">Speichern</button><button id="cancel" type="button">Abbrechen</button>
+</form>
+</section>
+<p class="notice">Vor jeder Änderung wird eine Sicherung unter database/backups angelegt. Abhängige Einträge müssen vor dem übergeordneten Eintrag entfernt werden. IDs werden automatisch vergeben und nicht umnummeriert.</p>
+</body></html>
