@@ -1,4 +1,3 @@
-from curses import raw
 import struct
 
 
@@ -7,9 +6,13 @@ def decode_value(data: bytes, field: dict):
     length = field["length"]
     data_type = field["type"]
 
-    raw = data[offset:offset + length]
+    raw = (
+        data[offset:]
+        if length is None
+        else data[offset:offset + length]
+    )
 
-    if len(raw) != length:
+    if length is not None and len(raw) != length:
         raise ValueError(
             f"Nicht genügend Daten für {field['name']}: "
             f"erwartet {length}, erhalten {len(raw)}"
@@ -38,6 +41,12 @@ def decode_value(data: bytes, field: dict):
 
     elif data_type == "float32_le":
         return struct.unpack("<f", raw)[0]
+
+    elif data_type == "ascii":
+        return raw.decode("ascii").rstrip("\x00 ")
+
+    elif data_type == "hex":
+        return raw.hex().upper()
 
     else:
         raise ValueError(f"Unbekannter Datentyp: {data_type}")

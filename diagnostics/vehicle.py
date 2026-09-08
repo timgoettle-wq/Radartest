@@ -5,6 +5,7 @@ import subprocess
 from database.database import (
     get_parameters,
     get_dtc_configs,
+    get_identification_parameters,
 )
 from decoder import decode_parameter
 
@@ -69,6 +70,12 @@ class VehicleDiagnostic:
 
         self.dtc_configs = get_dtc_configs(
             vehicle_id
+        )
+
+        self.identification_parameters = (
+            get_identification_parameters(
+                vehicle_id
+            )
         )
 
 
@@ -152,6 +159,7 @@ class VehicleDiagnostic:
         configs = (
             self.parameters
             + self.dtc_configs
+            + self.identification_parameters
         )
 
 
@@ -462,7 +470,8 @@ class VehicleDiagnostic:
 
     def _read_parameter(
         self,
-        parameter
+        parameter,
+        include_raw_response=False
     ):
 
         service = parameter[
@@ -622,10 +631,15 @@ class VehicleDiagnostic:
         # Vorhandenen Decoder verwenden
         # ==================================================
 
-        return decode_parameter(
+        decoded_values = decode_parameter(
             response,
             parameter
         )
+
+        if include_raw_response:
+            return decoded_values, response
+
+        return decoded_values
 
 
     # ==================================================
@@ -778,6 +792,60 @@ class VehicleDiagnostic:
         return list(
             self.signal_map.keys()
         )
+
+
+    # ==================================================
+    # STEUERGERÄTE-IDENTIFIKATION LESEN
+    # ==================================================
+
+    def read_identification(self):
+
+        results = []
+
+        for parameter in self.identification_parameters:
+
+            result = {
+                "parameter_id": parameter["id"],
+                "key": parameter["identifier_key"],
+                "label": parameter["label"],
+                "ecu_id": parameter["ecu_id"],
+                "ecu_name": parameter["ecu_name"],
+                "service": f"0x{parameter['service']:02X}",
+                "did": f"0x{parameter['did']:04X}",
+                "data_type": parameter["data_type"],
+                "required": bool(parameter["required"]),
+                "accepted_values": parameter["accepted_values"],
+                "read_status": "ok",
+                "value": None,
+                "raw_response": None,
+                "error_message": None,
+            }
+
+            try:
+
+                decoded_values, response = (
+                    self._read_parameter(
+                        parameter,
+                        include_raw_response=True
+                    )
+                )
+
+                result["value"] = decoded_values[
+                    "identification_value"
+                ]["value"]
+
+                result["raw_response"] = (
+                    response.hex().upper()
+                )
+
+            except Exception as error:
+
+                result["read_status"] = "read_error"
+                result["error_message"] = str(error)
+
+            results.append(result)
+
+        return results
 
 
     # ==================================================

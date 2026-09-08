@@ -139,6 +139,24 @@ def index():
                 margin-left: 20px;
             }
 
+            .identification-table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-top: 10px;
+            }
+
+            .identification-table th,
+            .identification-table td {
+                padding: 8px;
+                border: 1px solid #ccc;
+                text-align: left;
+                vertical-align: top;
+            }
+
+            .identification-table th {
+                background: #f3f3f3;
+            }
+
             #status {
                 margin-top: 15px;
                 font-weight: bold;
@@ -249,6 +267,18 @@ def index():
                 </p>
 
                 <div id="dtcList"></div>
+
+                <p>
+                    Steuergeräte-Identifikation:
+                    <span
+                        id="identificationStatus"
+                        class="value"
+                    >
+                        -
+                    </span>
+                </p>
+
+                <div id="identificationList"></div>
 
             </div>
 
@@ -796,6 +826,17 @@ def index():
                 ).innerHTML = "";
 
 
+                document.getElementById(
+                    "identificationStatus"
+                ).textContent =
+                    "wird gelesen...";
+
+
+                document.getElementById(
+                    "identificationList"
+                ).innerHTML = "";
+
+
                 try {
 
                     const data =
@@ -808,7 +849,14 @@ def index():
 
 
                     displayDtcs(
-                        data.dtcs_before
+                        data.dtcs_before,
+                        data.dtc_error
+                    );
+
+
+                    displayIdentification(
+                        data.identification,
+                        data.identification_summary
                     );
 
 
@@ -847,6 +895,12 @@ def index():
                         "Fehler";
 
 
+                    document.getElementById(
+                        "identificationStatus"
+                    ).textContent =
+                        "Fehler";
+
+
                     showError(
                         error.message
                     );
@@ -860,7 +914,8 @@ def index():
             // ====================================
 
             function displayDtcs(
-                ecuResults
+                ecuResults,
+                errorMessage
             ) {
 
                 const list =
@@ -870,6 +925,18 @@ def index():
 
 
                 list.innerHTML = "";
+
+
+                if (errorMessage) {
+
+                    document.getElementById(
+                        "dtcStatus"
+                    ).textContent =
+                        "Lesefehler: "
+                        + errorMessage;
+
+                    return;
+                }
 
 
                 if (
@@ -1009,6 +1076,115 @@ def index():
                         + " DTC(s) gefunden";
 
                 }
+            }
+
+
+            // ====================================
+            // STEUERGERÄTE-IDENTIFIKATION ANZEIGEN
+            // ====================================
+
+            function displayIdentification(
+                results,
+                summary
+            ) {
+
+                const container =
+                    document.getElementById(
+                        "identificationList"
+                    );
+
+
+                container.innerHTML = "";
+
+
+                if (!results || results.length === 0) {
+
+                    document.getElementById(
+                        "identificationStatus"
+                    ).textContent =
+                        "Keine Parameter konfiguriert";
+
+                    return;
+                }
+
+
+                const statusLabels = {
+                    match: "Referenz erkannt",
+                    mismatch: "Nicht in Referenzliste",
+                    unknown: "Keine Referenz hinterlegt",
+                    read_error: "Lesefehler"
+                };
+
+
+                const table = document.createElement(
+                    "table"
+                );
+
+                table.className =
+                    "identification-table";
+
+
+                const header = table.insertRow();
+
+                for (const title of [
+                    "Merkmal",
+                    "Steuergerät",
+                    "Istwert",
+                    "Rohantwort",
+                    "Referenz",
+                    "Bewertung"
+                ]) {
+
+                    const cell = document.createElement(
+                        "th"
+                    );
+
+                    cell.textContent = title;
+                    header.appendChild(cell);
+                }
+
+
+                for (const item of results) {
+
+                    const row = table.insertRow();
+
+                    const references = (
+                        item.accepted_values || []
+                    ).map(
+                        entry => entry.value
+                    ).join(", ");
+
+                    const values = [
+                        item.label
+                            + " (" + item.did + ")",
+                        item.ecu_name,
+                        item.read_status === "ok"
+                            ? String(item.value)
+                            : item.error_message,
+                        item.raw_response || "-",
+                        references || "-",
+                        statusLabels[item.status]
+                            || item.status
+                    ];
+
+                    for (const value of values) {
+
+                        const cell = row.insertCell();
+                        cell.textContent = value || "-";
+                    }
+                }
+
+
+                container.appendChild(table);
+
+
+                document.getElementById(
+                    "identificationStatus"
+                ).textContent =
+                    summary.match + " erkannt, "
+                    + summary.mismatch + " unbekannt, "
+                    + summary.unknown + " ohne Referenz, "
+                    + summary.read_error + " Lesefehler";
             }
 
 
@@ -1946,6 +2122,16 @@ def index():
 
                 document.getElementById(
                     "dtcList"
+                ).innerHTML = "";
+
+
+                document.getElementById(
+                    "identificationStatus"
+                ).textContent = "-";
+
+
+                document.getElementById(
+                    "identificationList"
                 ).innerHTML = "";
 
 

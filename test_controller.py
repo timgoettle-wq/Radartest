@@ -373,12 +373,66 @@ class TestController:
 
         self._check_connection()
 
-        dtcs_before = (
-            self.vehicle.read_dtcs()
+        try:
+            dtcs_before = self.vehicle.read_dtcs()
+            dtc_error = None
+
+        except Exception as error:
+            dtcs_before = []
+            dtc_error = str(error)
+
+        identification = (
+            self.vehicle.read_identification()
         )
 
+        identification_summary = {
+            "configured": len(identification),
+            "match": 0,
+            "mismatch": 0,
+            "unknown": 0,
+            "read_error": 0,
+        }
+
+        for item in identification:
+
+            if item["read_status"] != "ok":
+                item["status"] = "read_error"
+
+            else:
+                accepted_values = [
+                    entry["value"]
+                    for entry in item["accepted_values"]
+                ]
+
+                if not accepted_values:
+                    item["status"] = "unknown"
+
+                else:
+                    actual_value = str(
+                        item["value"]
+                    ).strip().casefold()
+
+                    normalized_references = {
+                        str(value).strip().casefold()
+                        for value in accepted_values
+                    }
+
+                    item["status"] = (
+                        "match"
+                        if actual_value in normalized_references
+                        else "mismatch"
+                    )
+
+            identification_summary[
+                item["status"]
+            ] += 1
+
         result = {
-            "dtcs_before": dtcs_before
+            "timestamp_unix_ns": time.time_ns(),
+            "dtcs_before": dtcs_before,
+            "dtc_error": dtc_error,
+            "identification": identification,
+            "identification_summary": identification_summary
         }
 
         if self.test_run is not None:
