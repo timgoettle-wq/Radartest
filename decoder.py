@@ -48,6 +48,19 @@ def decode_value(data: bytes, field: dict):
     elif data_type == "hex":
         return raw.hex().upper()
 
+    elif data_type == "version_triplet":
+
+        if len(raw) != 3:
+            raise ValueError(
+                "version_triplet erwartet genau 3 Byte"
+            )
+
+        return (
+            f"{raw[0]:02d}/"
+            f"{raw[1]:02d} "
+            f"{raw[2]:03d}"
+        )
+
     else:
         raise ValueError(f"Unbekannter Datentyp: {data_type}")
 
