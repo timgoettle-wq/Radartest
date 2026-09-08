@@ -258,6 +258,41 @@ class MeasurementLogger:
                     "scenario_duration_s"
                 ),
 
+            "dynamic_pre_hold_s":
+                measurement.get(
+                    "dynamic_pre_hold_s"
+                ),
+
+            "dynamic_post_hold_s":
+                measurement.get(
+                    "dynamic_post_hold_s"
+                ),
+
+            "dynamic_total_duration_s":
+                measurement.get(
+                    "dynamic_total_duration_s"
+                ),
+
+            "dynamic_direction":
+                measurement.get(
+                    "dynamic_direction"
+                ),
+
+            "phase":
+                measurement.get(
+                    "phase"
+                ),
+
+            "phase_elapsed_s":
+                measurement.get(
+                    "phase_elapsed_s"
+                ),
+
+            "sequence_elapsed_s":
+                measurement.get(
+                    "sequence_elapsed_s"
+                ),
+
             "scenario_elapsed_s":
                 measurement.get(
                     "scenario_elapsed_s"
@@ -276,6 +311,11 @@ class MeasurementLogger:
             "scenario_trigger_requested_ns":
                 measurement.get(
                     "scenario_trigger_requested_ns"
+                ),
+
+            "dynamic_sequence_start_ns":
+                measurement.get(
+                    "dynamic_sequence_start_ns"
                 ),
 
             "scenario_trigger_call_ns":

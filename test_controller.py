@@ -77,9 +77,15 @@ class TestController:
         self.dynamic_velocity_kmh = None
 
         self.dynamic_duration_s = None
+        self.dynamic_pre_hold_s = 2.0
+        self.dynamic_post_hold_s = 2.0
+        self.dynamic_total_duration_s = None
+        self.dynamic_direction = None
+        self.dynamic_pre_hold_distance = None
 
         self._scenario_thread = None
 
+        self._dynamic_sequence_start_ns = None
         self._scenario_start_ns = None
         self._scenario_trigger_requested_ns = None
         self._scenario_trigger_call_ns = None
@@ -629,7 +635,9 @@ class TestController:
         self,
         start_distance_m,
         end_distance_m,
-        velocity_kmh
+        velocity_kmh,
+        pre_hold_s=2.0,
+        post_hold_s=2.0
     ):
 
         self._check_connection()
@@ -666,6 +674,14 @@ class TestController:
             velocity_kmh
         )
 
+        pre_hold_s = float(
+            pre_hold_s
+        )
+
+        post_hold_s = float(
+            post_hold_s
+        )
+
 
         if start_distance_m <= 0:
 
@@ -692,6 +708,13 @@ class TestController:
 
             raise ValueError(
                 "Geschwindigkeit muss größer als 0 km/h sein"
+            )
+
+        if pre_hold_s < 0 or post_hold_s < 0:
+
+            raise ValueError(
+                "Vorhalte- und Nachhaltezeit dürfen "
+                "nicht negativ sein"
             )
 
 
@@ -742,6 +765,24 @@ class TestController:
             self.radest.scenario_get_velocity()
         )
 
+        self.dynamic_pre_hold_s = pre_hold_s
+        self.dynamic_post_hold_s = post_hold_s
+
+        self.dynamic_direction = (
+            "approaching"
+            if self.dynamic_end_distance
+            < self.dynamic_start_distance
+            else "receding"
+        )
+
+        self.radest.target_set_distance(
+            self.dynamic_start_distance
+        )
+
+        self.dynamic_pre_hold_distance = (
+            self.radest.target_get_distance()
+        )
+
 
         if self.dynamic_velocity_kmh <= 0:
 
@@ -764,6 +805,12 @@ class TestController:
             / velocity_mps
         )
 
+        self.dynamic_total_duration_s = (
+            self.dynamic_pre_hold_s
+            + self.dynamic_duration_s
+            + self.dynamic_post_hold_s
+        )
+
 
         self.requested_distance = (
             self.dynamic_start_distance
@@ -779,6 +826,7 @@ class TestController:
 
         self._measurement_mode = "dynamic"
 
+        self._dynamic_sequence_start_ns = None
         self._scenario_start_ns = None
         self._scenario_trigger_requested_ns = None
         self._scenario_trigger_call_ns = None
@@ -797,7 +845,22 @@ class TestController:
                 self.dynamic_velocity_kmh,
 
             "duration_s":
-                self.dynamic_duration_s
+                self.dynamic_duration_s,
+
+            "pre_hold_s":
+                self.dynamic_pre_hold_s,
+
+            "post_hold_s":
+                self.dynamic_post_hold_s,
+
+            "total_duration_s":
+                self.dynamic_total_duration_s,
+
+            "direction":
+                self.dynamic_direction,
+
+            "pre_hold_distance":
+                self.dynamic_pre_hold_distance
         }
 
 
@@ -824,14 +887,14 @@ class TestController:
             )
 
 
-        self._scenario_trigger_requested_ns = (
+        self._dynamic_sequence_start_ns = (
             time.perf_counter_ns()
         )
 
         if self.test_run is not None:
             self.test_run.update_active_test({
-                "scenario_trigger_requested_ns":
-                    self._scenario_trigger_requested_ns
+                "dynamic_sequence_start_ns":
+                    self._dynamic_sequence_start_ns
             })
 
         self._scenario_thread = (
@@ -849,6 +912,15 @@ class TestController:
 
         try:
 
+            if self._measurement_stop_event.wait(
+                self.dynamic_pre_hold_s
+            ):
+                return
+
+            self._scenario_trigger_requested_ns = (
+                time.perf_counter_ns()
+            )
+
             self._scenario_trigger_call_ns = (
                 time.perf_counter_ns()
             )
@@ -859,6 +931,8 @@ class TestController:
 
             if self.test_run is not None:
                 self.test_run.update_active_test({
+                    "scenario_trigger_requested_ns":
+                        self._scenario_trigger_requested_ns,
                     "scenario_trigger_call_ns":
                         self._scenario_trigger_call_ns
                 })
@@ -1105,26 +1179,57 @@ class TestController:
         # RadEsT-Socket nicht parallel abgefragt.
         # --------------------------------------------------
 
-        if self._scenario_start_ns is None:
+        sample_time_ns = (
+            vehicle_response_ns
+            if vehicle_response_ns is not None
+            else time.perf_counter_ns()
+        )
 
-            scenario_elapsed_s = 0.0
+        if self._dynamic_sequence_start_ns is None:
+            sequence_elapsed_s = 0.0
+        else:
+            sequence_elapsed_s = max(
+                0.0,
+                (
+                    sample_time_ns
+                    - self._dynamic_sequence_start_ns
+                ) / 1_000_000_000
+            )
+
+        if self._scenario_start_ns is None:
+            phase = "pre_hold"
+            phase_elapsed_s = sequence_elapsed_s
+            scenario_elapsed_s = (
+                sequence_elapsed_s
+                - self.dynamic_pre_hold_s
+            )
+            progress = 0.0
 
         else:
-
             scenario_elapsed_s = max(
                 0.0,
                 (
-                    time.perf_counter_ns()
+                    sample_time_ns
                     - self._scenario_start_ns
                 ) / 1_000_000_000
             )
 
+            progress = min(
+                1.0,
+                scenario_elapsed_s
+                / self.dynamic_duration_s
+            )
 
-        progress = min(
-            1.0,
-            scenario_elapsed_s
-            / self.dynamic_duration_s
-        )
+            if progress < 1.0:
+                phase = "moving"
+                phase_elapsed_s = scenario_elapsed_s
+            else:
+                phase = "post_hold"
+                phase_elapsed_s = max(
+                    0.0,
+                    scenario_elapsed_s
+                    - self.dynamic_duration_s
+                )
 
         radest_distance = (
             self.dynamic_start_distance
@@ -1139,6 +1244,8 @@ class TestController:
             self._scenario_start_ns is not None
             and
             progress >= 1.0
+            and
+            phase_elapsed_s >= self.dynamic_post_hold_s
             and
             self._scenario_trigger_returned_ns is not None
         )
@@ -1229,6 +1336,27 @@ class TestController:
             "scenario_duration_s":
                 self.dynamic_duration_s,
 
+            "dynamic_pre_hold_s":
+                self.dynamic_pre_hold_s,
+
+            "dynamic_post_hold_s":
+                self.dynamic_post_hold_s,
+
+            "dynamic_total_duration_s":
+                self.dynamic_total_duration_s,
+
+            "dynamic_direction":
+                self.dynamic_direction,
+
+            "phase":
+                phase,
+
+            "phase_elapsed_s":
+                phase_elapsed_s,
+
+            "sequence_elapsed_s":
+                sequence_elapsed_s,
+
             "scenario_elapsed_s":
                 scenario_elapsed_s,
 
@@ -1240,6 +1368,9 @@ class TestController:
 
             "scenario_trigger_requested_ns":
                 self._scenario_trigger_requested_ns,
+
+            "dynamic_sequence_start_ns":
+                self._dynamic_sequence_start_ns,
 
             "scenario_trigger_call_ns":
                 self._scenario_trigger_call_ns,
@@ -1622,6 +1753,30 @@ class TestController:
                 "scenario_end_distance": self.dynamic_end_distance,
                 "scenario_velocity_kmh": self.dynamic_velocity_kmh,
                 "scenario_duration_s": self.dynamic_duration_s,
+                "dynamic_pre_hold_s": self.dynamic_pre_hold_s,
+                "dynamic_post_hold_s": self.dynamic_post_hold_s,
+                "dynamic_total_duration_s": self.dynamic_total_duration_s,
+                "dynamic_direction": self.dynamic_direction,
+                "phase": (
+                    self._latest_measurement.get("phase")
+                    if self._latest_measurement is not None
+                    else None
+                ),
+                "phase_elapsed_s": (
+                    self._latest_measurement.get("phase_elapsed_s")
+                    if self._latest_measurement is not None
+                    else None
+                ),
+                "sequence_elapsed_s": (
+                    None
+                    if self._dynamic_sequence_start_ns is None
+                    else (
+                        timestamp_ns
+                        - self._dynamic_sequence_start_ns
+                    ) / 1_000_000_000
+                ),
+                "dynamic_sequence_start_ns":
+                    self._dynamic_sequence_start_ns,
                 "scenario_trigger_requested_ns":
                     self._scenario_trigger_requested_ns,
                 "scenario_trigger_call_ns":
@@ -1844,7 +1999,22 @@ class TestController:
                         self.dynamic_velocity_kmh,
 
                     "duration_s":
-                        self.dynamic_duration_s
+                        self.dynamic_duration_s,
+
+                    "pre_hold_s":
+                        self.dynamic_pre_hold_s,
+
+                    "post_hold_s":
+                        self.dynamic_post_hold_s,
+
+                    "total_duration_s":
+                        self.dynamic_total_duration_s,
+
+                    "direction":
+                        self.dynamic_direction,
+
+                    "pre_hold_distance_m":
+                        self.dynamic_pre_hold_distance
                 },
 
                 log_file=

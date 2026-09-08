@@ -436,9 +436,19 @@ def index():
                 </span>
             </p>
 
+            <p>
+                Aktuelle Phase:
+                <span
+                    id="scenarioPhase"
+                    class="value"
+                >
+                    -
+                </span>
+            </p>
+
 
             <p>
-                Berechnete Dauer:
+                Gesamtdauer:
                 <span
                     id="scenarioDuration"
                     class="value"
@@ -1322,7 +1332,7 @@ def index():
                         "scenarioDuration"
                     ).textContent =
                         Number(
-                            data.duration_s
+                            data.total_duration_s
                         ).toFixed(2);
 
 
@@ -1336,6 +1346,12 @@ def index():
                         "scenarioStatus"
                     ).textContent =
                         "Läuft";
+
+
+                    document.getElementById(
+                        "scenarioPhase"
+                    ).textContent =
+                        "Startdistanz halten";
 
 
                     if (data.log_file) {
@@ -1462,6 +1478,12 @@ def index():
 
 
                             document.getElementById(
+                                "scenarioPhase"
+                            ).textContent =
+                                "Enddistanz gehalten";
+
+
+                            document.getElementById(
                                 "scenarioProgress"
                             ).textContent =
                                 "100.0 %";
@@ -1527,11 +1549,17 @@ def index():
                     === "dynamic"
                 ) {
 
+                    const phaseLabels = {
+                        pre_hold: "Startdistanz halten",
+                        moving: "Bewegung",
+                        post_hold: "Enddistanz halten"
+                    };
+
                     document.getElementById(
                         "scenarioDuration"
                     ).textContent =
                         Number(
-                            data.scenario_duration_s
+                            data.dynamic_total_duration_s
                         ).toFixed(2);
 
 
@@ -1553,6 +1581,14 @@ def index():
                         data.scenario_done
                         ? "Beendet"
                         : "Läuft";
+
+
+                    document.getElementById(
+                        "scenarioPhase"
+                    ).textContent =
+                        phaseLabels[data.phase]
+                        || data.phase
+                        || "-";
 
                 }
 
@@ -1970,6 +2006,11 @@ def index():
 
                 document.getElementById(
                     "scenarioStatus"
+                ).textContent = "-";
+
+
+                document.getElementById(
+                    "scenarioPhase"
                 ).textContent = "-";
 
 
