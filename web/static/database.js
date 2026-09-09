@@ -127,13 +127,14 @@ function renderVehicleList() {
   $("emptyVehicles").hidden = vehicles.length > 0;
   $("vehicleList").innerHTML = vehicles.map(vehicle => {
     const sensors = related("ecus", "vehicle_id", vehicle.id);
-    return `<article class="vehicle-card" data-open-vehicle="${vehicle.id}" tabindex="0">
-      <div class="card-kicker">${esc(vehicle.manufacturer)}</div>
-      <h2>${esc(vehicle.model)}</h2>
-      <p class="vehicle-generation">${esc(vehicle.generation || "Baureihe nicht angegeben")}</p>
-      <div class="card-meta"><span>${esc(years(vehicle))}</span><span>${sensors.length} Radarsensor${sensors.length === 1 ? "" : "en"}</span></div>
-      <span class="card-link">Fahrzeug öffnen →</span>
-    </article>`;
+    return `<tr class="vehicle-table-row" data-open-vehicle="${vehicle.id}" tabindex="0" role="button">
+      <td><strong>${esc(vehicle.manufacturer || "—")}</strong></td>
+      <td>${esc(vehicle.model || "—")}</td>
+      <td>${esc(vehicle.generation || "—")}</td>
+      <td>${esc(years(vehicle))}</td>
+      <td>${sensors.length}</td>
+      <td><span class="table-open-link">Öffnen →</span></td>
+    </tr>`;
   }).join("");
 }
 

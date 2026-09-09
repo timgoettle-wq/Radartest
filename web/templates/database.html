@@ -41,7 +41,12 @@
       <label><span>Modelljahr</span><input id="yearFilter" type="number" min="1900" max="2200" placeholder="z. B. 2022"></label>
       <button id="reload" class="secondary">Aktualisieren</button>
     </div>
-    <div id="vehicleList" class="vehicle-grid"></div>
+    <div class="table-scroll results-table-wrap vehicle-table-wrap">
+      <table class="results-table vehicle-table">
+        <thead><tr><th>Marke</th><th>Modell</th><th>Baureihe</th><th>Bauzeitraum</th><th>Radarsensoren</th><th></th></tr></thead>
+        <tbody id="vehicleList"></tbody>
+      </table>
+    </div>
     <p id="emptyVehicles" class="empty-state" hidden>Keine passenden Fahrzeuge gefunden.</p>
   </section>
 
