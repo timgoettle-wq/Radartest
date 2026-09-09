@@ -88,6 +88,7 @@ function parameterText(test) {
 function showView(id) {
     document.querySelectorAll(".results-view").forEach(view => view.hidden = true);
     $(id).hidden = false;
+    $("resultsOverviewHeader").hidden = id !== "resultsOverview";
     showMessage("");
 }
 
@@ -123,6 +124,9 @@ function renderResults() {
     });
     const body = $("resultsTableBody");
     body.replaceChildren();
+    $("resultsCount").textContent = resultState.results.length === 1
+        ? "1 TestRun im Ergebnisarchiv"
+        : resultState.results.length + " TestRuns im Ergebnisarchiv";
 
     for (const run of visible) {
         const row = body.insertRow();

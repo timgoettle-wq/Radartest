@@ -26,12 +26,15 @@
     </header>
 
     <main class="results-shell">
+        <div id="resultsOverviewHeader">
+            <div class="breadcrumbs">Ergebnisse</div>
+            <div class="page-header">
+                <div><p class="eyebrow">Ergebnisarchiv</p><h1>TestRuns</h1><p id="resultsCount">0 TestRuns im Ergebnisarchiv</p></div>
+            </div>
+        </div>
         <p id="resultsMessage" class="status-message" role="status"></p>
 
         <section id="resultsOverview" class="results-view">
-            <div class="page-header">
-                <div><p class="eyebrow">Ergebnisarchiv</p><h1>TestRuns</h1><p>Gespeicherte Prüfläufe durchsuchen und öffnen.</p></div>
-            </div>
             <div class="results-filter-bar">
                 <label><span>Suche</span><input id="resultSearch" type="search" placeholder="Fahrzeug oder TestRun-ID"></label>
                 <label><span>Status</span><select id="resultStatusFilter"><option value="">Alle Status</option><option value="finished">Abgeschlossen</option><option value="completed_with_errors">Mit Fehlern</option><option value="aborted">Abgebrochen</option><option value="running">Laufend</option></select></label>

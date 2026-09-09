@@ -83,7 +83,7 @@ async function load(successMessage="") {
       history.replaceState({}, "", "/database");
     }
     render();
-    message(successMessage || (state.locked ? "Nur Ansicht: Zum Bearbeiten zuerst das Testsystem trennen." : "Datenpflege bereit."));
+    message(successMessage || (state.locked ? "Nur Ansicht: Zum Bearbeiten zuerst das Testsystem trennen." : ""));
   } catch (error) {
     message(error.message, true);
   }
