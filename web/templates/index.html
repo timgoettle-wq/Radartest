@@ -1,479 +1,184 @@
-
-    <!DOCTYPE html>
-
-    <html lang="de">
-
-    <head>
-
-        <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-
-        <title>
-            Radar Testsystem
-        </title>
-
-        <link rel="stylesheet" href="/static/style.css">
-
-    </head>
-
-
-    <body>
-    <nav>
-        <a href="/">Radartest</a>
-        <a href="/database">Datenpflege</a>
-        <a href="/docs">API</a>
-
-        <img class="dekra-logo"
-             src="/static/images/dekra-logo.svg"
-             alt="DEKRA">
-    </nav>
-
-        <h1>
-            Radar Testsystem
-        </h1>
-
-
-        <!-- =================================== -->
-        <!-- 1. Fahrzeug -->
-        <!-- =================================== -->
-
-        <section>
-
-            <h2>
-                1. Fahrzeug auswählen
-            </h2>
-
-
-            <select id="vehicle">
-                __VEHICLE_OPTIONS__
-            </select>
-
-
-            <button
-                id="connectButton"
-                onclick="connectSystem()"
-            >
-                Verbinden
-            </button>
-
-
-            <button
-                id="disconnectButton"
-                onclick="disconnectSystem()"
-                disabled
-            >
-                Trennen
-            </button>
-
-
-            <p id="status">
-                Nicht verbunden
-            </p>
-
-
-            <p id="signals"></p>
-
-
-            <p>
-                TestRun:
-                <span
-                    id="testRun"
-                    class="value"
-                >
-                    -
-                </span>
-            </p>
-
-        </section>
-
-
-        <!-- =================================== -->
-        <!-- 2. Quick Check -->
-        <!-- =================================== -->
-
-        <section>
-
-            <h2>
-                2. Fahrzeug Quick Check
-            </h2>
-
-
-            <button
-                id="quickCheckButton"
-                onclick="runQuickCheck()"
-                disabled
-            >
-                Quick Check starten
-            </button>
-
-
-            <div id="quickCheckResult">
-
-                <p>
-                    Fehlerspeicher:
-                    <span
-                        id="dtcStatus"
-                        class="value"
-                    >
-                        -
-                    </span>
-                </p>
-
-                <div id="dtcList"></div>
-
-                <p>
-                    Steuergeräte-Identifikation:
-                    <span
-                        id="identificationStatus"
-                        class="value"
-                    >
-                        -
-                    </span>
-                </p>
-
-                <div id="identificationList"></div>
-
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Radar Testsystem</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="/static/test.js" defer></script>
+</head>
+<body class="test-app">
+    <header class="app-header">
+        <div class="header-main">
+            <div class="app-title"><span class="app-mark"></span><strong>Radar Testsystem</strong></div>
+            <div class="session-summary" aria-live="polite">
+                <span id="headerVehicle">Kein Fahrzeug</span>
+                <span class="summary-divider">|</span>
+                <span id="headerTestRun">Kein TestRun</span>
+                <span class="summary-divider">|</span>
+                <span id="headerConnection" class="connection-label"><i></i>Nicht verbunden</span>
             </div>
+            <nav class="utility-nav" aria-label="Weitere Bereiche">
+                <a href="/database">Datenpflege</a>
+                <a href="/docs">API</a>
+            </nav>
+            <img class="dekra-logo" src="/static/images/dekra-logo.svg" alt="DEKRA">
+        </div>
+        <div class="system-strip">
+            <span>Systemstatus</span>
+            <span class="system-indicator" id="radestIndicator"><i></i>RadEsT</span>
+            <span class="system-indicator" id="vehicleIndicator"><i></i>Fahrzeug</span>
+            <span class="system-indicator" id="diagnosisIndicator"><i></i>Diagnose</span>
+            <button id="disconnectButton" class="header-action" type="button" disabled>Trennen</button>
+        </div>
+    </header>
 
+    <main class="workflow-shell">
+        <ol class="stepper" aria-label="Prüffortschritt">
+            <li data-step="1" class="active"><button type="button"><span>1</span>Fahrzeug</button></li>
+            <li data-step="2" class="locked"><button type="button" disabled><span>2</span>Quick Check</button></li>
+            <li data-step="3" class="locked"><button type="button" disabled><span>3</span>Precheck</button></li>
+            <li data-step="4" class="locked"><button type="button" disabled><span>4</span>Prüfung</button></li>
+            <li data-step="5" class="locked"><button type="button" disabled><span>5</span>Ergebnis</button></li>
+        </ol>
+
+        <p id="error" class="app-message error-message" role="alert"></p>
+        <p id="appMessage" class="app-message" role="status"></p>
+
+        <section id="screenVehicle" class="workflow-screen">
+            <div class="screen-heading">
+                <div><p class="eyebrow">Schritt 1</p><h1>Fahrzeug auswählen</h1><p>Fahrzeugdiagnose und RadEsT verbinden und einen neuen TestRun starten.</p></div>
+            </div>
+            <div class="selection-panel">
+                <label for="vehicle">Fahrzeug</label>
+                <select id="vehicle">__VEHICLE_OPTIONS__</select>
+                <button id="connectButton" class="primary large-action" type="button">Prüfung starten</button>
+            </div>
+            <div id="connectionResult" class="result-panel" hidden>
+                <h2>Verbindungsprüfung</h2>
+                <div class="check-list">
+                    <div id="checkRadest" class="check-row"><i></i><span>RadEsT verbunden</span></div>
+                    <div id="checkDiagnosis" class="check-row"><i></i><span>Fahrzeugdiagnose verbunden</span></div>
+                    <div id="checkSignals" class="check-row"><i></i><span id="signals">Messsignale werden geprüft</span></div>
+                </div>
+                <div class="screen-actions"><span></span><button id="toQuickCheckButton" class="primary" type="button">Weiter zum Quick Check</button></div>
+            </div>
         </section>
 
-
-        <!-- =================================== -->
-        <!-- 3. Precheck -->
-        <!-- =================================== -->
-
-        <section>
-
-            <h2>
-                3. RadEsT Precheck
-            </h2>
-
-
-            <button
-                id="precheckButton"
-                onclick="runPrecheck()"
-                disabled
-            >
-                Precheck starten
-            </button>
-
-
-            <button
-                id="skipPrecheckButton"
-                onclick="skipPrecheck()"
-                disabled
-            >
-                Precheck überspringen
-            </button>
-
-
-            <p>
-                Polarisation:
-                <span
-                    id="polarization"
-                    class="value"
-                >
-                    -
-                </span>
-            </p>
-
-
-            <p>
-                Frequenzbereich:
-                <span
-                    id="frequency"
-                    class="value"
-                >
-                    -
-                </span>
-            </p>
-
-
-            <p>
-                Leistung:
-                <span
-                    id="power"
-                    class="value"
-                >
-                    -
-                </span>
-            </p>
-
+        <section id="screenQuickCheck" class="workflow-screen" hidden>
+            <div class="screen-heading"><div><p class="eyebrow">Schritt 2</p><h1>Fahrzeug Quick Check</h1><p>Steuergeräteidentifikation und Fehlerspeicher vor der Radarprüfung erfassen.</p></div></div>
+            <button id="quickCheckButton" class="primary large-action" type="button">Quick Check starten</button>
+            <div id="quickCheckResult" class="result-panel" hidden>
+                <div id="quickCheckSummary" class="result-banner"></div>
+                <div class="result-columns">
+                    <article>
+                        <div class="section-title"><h2>Steuergeräteidentifikation</h2><span id="identificationStatus" class="status-pill">–</span></div>
+                        <div id="identificationList" class="table-scroll"></div>
+                    </article>
+                    <article>
+                        <div class="section-title"><h2>Fehlerspeicher</h2><span id="dtcStatus" class="status-pill">–</span></div>
+                        <div id="dtcList"></div>
+                    </article>
+                </div>
+            </div>
+            <div class="screen-actions"><button class="secondary" data-go-step="1" type="button">Zurück</button><button id="toPrecheckButton" class="primary" type="button" disabled>Weiter zum Precheck</button></div>
         </section>
 
-
-        <!-- =================================== -->
-        <!-- 4. Statische Messung -->
-        <!-- =================================== -->
-
-        <section>
-
-            <h2>
-                4. Statische Messung
-            </h2>
-
-
-            <label for="distanceInput">
-                Distanz:
-            </label>
-
-
-            <input
-                id="distanceInput"
-                type="number"
-                value="7.0"
-                step="0.1"
-                min="0"
-                disabled
-            >
-
-            <span>m</span>
-
-
-            <button
-                id="staticButton"
-                onclick="startStaticMeasurement()"
-                disabled
-            >
-                Messung starten
-            </button>
-
+        <section id="screenPrecheck" class="workflow-screen" hidden>
+            <div class="screen-heading"><div><p class="eyebrow">Schritt 3</p><h1>RadEsT Precheck</h1><p>Aktuelle RadEsT-Messwerte erfassen und im TestRun dokumentieren.</p></div></div>
+            <div class="precheck-actions">
+                <button id="precheckButton" class="primary large-action" type="button">Precheck starten</button>
+                <button id="skipPrecheckButton" class="secondary" type="button">Precheck überspringen</button>
+            </div>
+            <div id="precheckResult" class="result-panel" hidden>
+                <div id="precheckSummary" class="result-banner"></div>
+                <div class="metric-grid compact">
+                    <div class="metric-card"><span>Verbindung</span><strong id="precheckConnection">–</strong></div>
+                    <div class="metric-card"><span>Frequenzbereich</span><strong id="frequency">–</strong></div>
+                    <div class="metric-card"><span>Polarisation</span><strong id="polarization">–</strong></div>
+                    <div class="metric-card"><span>Empfangsleistung</span><strong id="power">–</strong></div>
+                </div>
+            </div>
+            <div class="screen-actions"><button class="secondary" data-go-step="2" type="button">Zurück</button><button id="toTestsButton" class="primary" type="button" disabled>Weiter zur Prüfung</button></div>
         </section>
 
-
-        <!-- =================================== -->
-        <!-- 5. Dynamische Messung -->
-        <!-- =================================== -->
-
-        <section>
-
-            <h2>
-                5. Dynamische Messung
-            </h2>
-
-
-            <label for="dynamicStartDistanceInput">
-                Startdistanz:
-            </label>
-
-            <input
-                id="dynamicStartDistanceInput"
-                type="number"
-                value="30.0"
-                step="0.1"
-                min="0.1"
-                disabled
-            >
-
-            <span>m</span>
-
-
-            <label for="dynamicEndDistanceInput">
-                Enddistanz:
-            </label>
-
-            <input
-                id="dynamicEndDistanceInput"
-                type="number"
-                value="5.0"
-                step="0.1"
-                min="0.1"
-                disabled
-            >
-
-            <span>m</span>
-
-
-            <label for="dynamicVelocityInput">
-                Geschwindigkeit:
-            </label>
-
-            <input
-                id="dynamicVelocityInput"
-                type="number"
-                value="20"
-                step="1"
-                min="1"
-                disabled
-            >
-
-            <span>km/h</span>
-
-
-            <button
-                id="dynamicButton"
-                onclick="startDynamicMeasurement()"
-                disabled
-            >
-                Scenario starten
-            </button>
-
-
-            <p>
-                Scenario-Status:
-                <span
-                    id="scenarioStatus"
-                    class="value"
-                >
-                    -
-                </span>
-            </p>
-
-            <p>
-                Aktuelle Phase:
-                <span
-                    id="scenarioPhase"
-                    class="value"
-                >
-                    -
-                </span>
-            </p>
-
-
-            <p>
-                Gesamtdauer:
-                <span
-                    id="scenarioDuration"
-                    class="value"
-                >
-                    -
-                </span>
-                s
-            </p>
-
-
-            <p>
-                Fortschritt:
-                <span
-                    id="scenarioProgress"
-                    class="value"
-                >
-                    -
-                </span>
-            </p>
-
+        <section id="screenTests" class="workflow-screen" hidden>
+            <div class="screen-heading"><div><p class="eyebrow">Schritt 4</p><h1>Prüfung auswählen</h1><p>Die nächste Messung wird dem aktuellen TestRun hinzugefügt.</p></div></div>
+            <div class="test-type-grid">
+                <article class="test-type-card">
+                    <div><p class="eyebrow">Konstantes Ziel</p><h2>Statische Messung</h2><p>Definiertes Radarziel bei konstanter Distanz.</p></div>
+                    <label for="distanceInput">Distanz <span>m</span></label>
+                    <input id="distanceInput" type="number" value="7.0" step="0.1" min="0.1">
+                    <button id="staticButton" class="primary" type="button">Statische Messung starten</button>
+                </article>
+                <article class="test-type-card">
+                    <div><p class="eyebrow">Bewegtes Ziel</p><h2>Dynamische Messung</h2><p>Radarziel zwischen zwei Distanzen bewegen.</p></div>
+                    <div class="parameter-grid">
+                        <label for="dynamicStartDistanceInput">Startdistanz <span>m</span><input id="dynamicStartDistanceInput" type="number" value="30.0" step="0.1" min="0.1"></label>
+                        <label for="dynamicEndDistanceInput">Enddistanz <span>m</span><input id="dynamicEndDistanceInput" type="number" value="5.0" step="0.1" min="0.1"></label>
+                        <label for="dynamicVelocityInput">Geschwindigkeit <span>km/h</span><input id="dynamicVelocityInput" type="number" value="5" step="0.1" min="0.1"></label>
+                    </div>
+                    <button id="dynamicButton" class="primary" type="button">Dynamische Messung starten</button>
+                </article>
+            </div>
+            <div class="screen-actions"><button class="secondary" data-go-step="3" type="button">Zurück</button><span></span></div>
         </section>
 
-
-        <!-- =================================== -->
-        <!-- 6. Live-Werte -->
-        <!-- =================================== -->
-
-        <section>
-
-            <h2>
-                6. Live-Werte
-            </h2>
-
-
-            <button
-                id="stopButton"
-                onclick="stopMeasurement()"
-                disabled
-            >
-                Messung stoppen
-            </button>
-
-
-            <p>
-                Angefordert:
-                <span
-                    id="requestedDistance"
-                    class="value"
-                >
-                    -
-                </span>
-                m
-            </p>
-
-
-            <p>
-                RadEsT / Scenario-Soll:
-                <span
-                    id="radestDistance"
-                    class="value"
-                >
-                    -
-                </span>
-                m
-            </p>
-
-
-            <p>
-                Fahrzeug:
-                <span
-                    id="vehicleDistance"
-                    class="value"
-                >
-                    -
-                </span>
-                m
-            </p>
-
-
-            <p>
-                Differenz:
-                <span
-                    id="distanceError"
-                    class="value"
-                >
-                    -
-                </span>
-                m
-            </p>
-
-
-            <p>
-                Winkel:
-                <span
-                    id="angle"
-                    class="value"
-                >
-                    -
-                </span>
-            </p>
-
-
-            <p>
-                Relativgeschwindigkeit:
-                <span
-                    id="relativeSpeed"
-                    class="value"
-                >
-                    -
-                </span>
-            </p>
-
-
-            <p>
-                Relativbeschleunigung:
-                <span
-                    id="relativeAcceleration"
-                    class="value"
-                >
-                    -
-                </span>
-            </p>
-
-
-            <p>
-                Logdatei:
-                <span
-                    id="logFile"
-                    class="value"
-                >
-                    -
-                </span>
-            </p>
-
+        <section id="screenMeasurement" class="workflow-screen measurement-screen" hidden>
+            <div class="screen-heading">
+                <div><p class="eyebrow">Messung läuft</p><h1 id="measurementTitle">Messung</h1><p id="measurementDescription">–</p></div>
+                <span id="measurementState" class="live-badge"><i></i>Live</span>
+            </div>
+            <div class="metric-grid live-metrics">
+                <div class="metric-card primary-metric"><span>RadEsT Soll</span><strong><b id="radestDistance">–</b> m</strong></div>
+                <div class="metric-card primary-metric"><span>Fahrzeugdistanz</span><strong><b id="vehicleDistance">–</b> m</strong></div>
+                <div class="metric-card primary-metric"><span>Abweichung</span><strong><b id="distanceError">–</b> m</strong></div>
+            </div>
+            <div class="measurement-layout">
+                <article class="chart-card">
+                    <div class="section-title"><h2>Distanzverlauf</h2><span>RadEsT / Fahrzeug</span></div>
+                    <canvas id="liveChart" width="900" height="320" aria-label="Live-Distanzverlauf"></canvas>
+                </article>
+                <article class="detail-card">
+                    <h2>Messstatus</h2>
+                    <dl class="measurement-details">
+                        <div><dt>Phase</dt><dd id="scenarioPhase">–</dd></div>
+                        <div><dt>Fortschritt</dt><dd id="scenarioProgress">–</dd></div>
+                        <div><dt>Gesamtdauer</dt><dd><span id="scenarioDuration">–</span> s</dd></div>
+                        <div><dt>Messzeit</dt><dd><span id="measurementElapsed">–</span> s</dd></div>
+                        <div><dt>Winkel</dt><dd id="angle">–</dd></div>
+                        <div><dt>Relativgeschwindigkeit</dt><dd id="relativeSpeed">–</dd></div>
+                        <div><dt>Relativbeschleunigung</dt><dd id="relativeAcceleration">–</dd></div>
+                    </dl>
+                </article>
+            </div>
+            <span id="requestedDistance" hidden>–</span><span id="scenarioStatus" hidden>–</span>
+            <button id="stopButton" class="danger large-action stop-action" type="button">Messung stoppen</button>
         </section>
 
-
-        <p id="error"></p>
-
-
-        <script src="/static/test.js" defer></script>
-
-    </body>
-
-    </html>
-    
+        <section id="screenResult" class="workflow-screen" hidden>
+            <div class="screen-heading"><div><p class="eyebrow">Schritt 5</p><h1>Ergebnis</h1><p id="resultHeadline">Messung abgeschlossen.</p></div><span id="resultStatus" class="status-pill">Abgeschlossen</span></div>
+            <div class="result-panel">
+                <div class="result-context">
+                    <div><span>Fahrzeug</span><strong id="resultVehicle">–</strong></div>
+                    <div><span>TestRun</span><strong id="resultRun">–</strong></div>
+                    <div><span>Prüfung</span><strong id="resultType">–</strong></div>
+                    <div><span>Parameter</span><strong id="resultParameters">–</strong></div>
+                </div>
+                <div class="metric-grid compact">
+                    <div class="metric-card"><span>Messdauer</span><strong id="resultDuration">–</strong></div>
+                    <div class="metric-card"><span>Messpunkte</span><strong id="resultSamples">–</strong></div>
+                    <div class="metric-card"><span>Mittlere abs. Abweichung</span><strong id="resultMeanError">–</strong></div>
+                    <div class="metric-card"><span>Maximale abs. Abweichung</span><strong id="resultMaxError">–</strong></div>
+                </div>
+                <div class="log-output"><span>Logdatei</span><code id="logFile">–</code></div>
+            </div>
+            <div class="screen-actions result-actions">
+                <button id="repeatButton" class="secondary" type="button">Messung wiederholen</button>
+                <button id="moreMeasurementButton" class="primary" type="button">Weitere Messung</button>
+                <button id="finishRunButton" class="finish-button" type="button">TestRun abschließen</button>
+            </div>
+        </section>
+    </main>
+</body>
+</html>

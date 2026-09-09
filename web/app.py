@@ -125,6 +125,61 @@ def index():
 
 
 # ==================================================
+# API: AKTUELLER WORKFLOW-STATUS
+# ==================================================
+
+@app.get("/api/status")
+@serialized_controller_access
+def get_system_status():
+
+    if controller is None:
+        return {
+            "connected": False
+        }
+
+    latest_measurement = None
+
+    try:
+        latest_measurement = (
+            controller.get_latest_measurement()
+        )
+    except RuntimeError:
+        # Ein Messfehler wird weiterhin über den vorhandenen
+        # WebSocket gemeldet. Der Status-Endpunkt selbst soll
+        # für die Wiederherstellung der Oberfläche erreichbar
+        # bleiben.
+        pass
+
+    test_run_data = (
+        controller.test_run.data
+        if controller.test_run is not None
+        else {}
+    )
+
+    log_file = None
+
+    if controller.measurement_logger is not None:
+        log_file = (
+            controller.measurement_logger
+            .get_file_path()
+        )
+
+    return {
+        "connected": controller.connected,
+        "vehicle_id": controller.vehicle_id,
+        "signals": controller.get_available_signals(),
+        "test_run": controller.get_test_run_info(),
+        "quick_check": test_run_data.get("quick_check"),
+        "precheck": controller.get_precheck_result(),
+        "measurement_running": (
+            controller.is_measurement_running()
+        ),
+        "latest_measurement": latest_measurement,
+        "log_file": log_file
+    }
+
+
+# ==================================================
 # API: VERBINDEN
 # ==================================================
 

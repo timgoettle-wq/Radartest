@@ -1,1616 +1,753 @@
+"use strict";
 
+let measurementSocket = null;
+let socketClosingIntentionally = false;
 
-            let measurementSocket = null;
+const uiState = {
+    connected: false,
+    vehicleId: null,
+    vehicleName: "",
+    runId: null,
+    signals: [],
+    quickCheckComplete: false,
+    quickCheckResult: null,
+    precheckComplete: false,
+    precheckSkipped: false,
+    currentStep: 1,
+    measurementComplete: false,
+    currentMeasurement: null,
+    lastMeasurement: null,
+    samples: [],
+    logFile: null,
+    measurementStartedAt: null,
+    lastConfiguration: null
+};
 
+const $ = id => document.getElementById(id);
+const screens = {
+    1: "screenVehicle",
+    2: "screenQuickCheck",
+    3: "screenPrecheck",
+    4: "screenTests",
+    5: "screenResult"
+};
 
-            // ====================================
-            // API-HILFSFUNKTION
-            // ====================================
+async function apiRequest(url, options = {}) {
+    const response = await fetch(url, options);
+    const text = await response.text();
+    let data;
+    try {
+        data = JSON.parse(text);
+    } catch {
+        throw new Error(text || "Ungültige Serverantwort");
+    }
+    if (!response.ok) {
+        throw new Error(data.detail || "Unbekannter Fehler");
+    }
+    return data;
+}
 
-            async function apiRequest(
-                url,
-                options = {}
-            ) {
+function showError(message) {
+    $("error").textContent = "Fehler: " + message;
+}
 
-                const response = await fetch(
-                    url,
-                    options
-                );
+function clearError() {
+    $("error").textContent = "";
+}
 
+function showMessage(message) {
+    $("appMessage").textContent = message || "";
+}
 
-                const text =
-                    await response.text();
+function setBusy(button, busy, busyText, normalText) {
+    button.disabled = busy;
+    button.textContent = busy ? busyText : normalText;
+}
 
+function setIndicator(id, state) {
+    const element = $(id);
+    element.classList.remove("ok", "warning", "error");
+    if (state) element.classList.add(state);
+}
 
-                let data;
+function updateHeader() {
+    $("headerVehicle").textContent = uiState.vehicleName || "Kein Fahrzeug";
+    $("headerTestRun").textContent = uiState.runId ? "TestRun " + uiState.runId : "Kein TestRun";
+    $("headerConnection").classList.toggle("connected", uiState.connected);
+    $("headerConnection").lastChild.textContent = uiState.connected ? "Verbunden" : "Nicht verbunden";
+    $("disconnectButton").disabled = !uiState.connected;
+    const status = uiState.connected ? "ok" : null;
+    setIndicator("radestIndicator", status);
+    setIndicator("vehicleIndicator", status);
+    setIndicator("diagnosisIndicator", status);
+}
 
+function maxAvailableStep() {
+    if (uiState.measurementComplete) return 5;
+    if (uiState.precheckComplete) return 4;
+    if (uiState.quickCheckComplete) return 3;
+    if (uiState.connected) return 2;
+    return 1;
+}
 
-                try {
+function updateStepper() {
+    const completed = {
+        1: uiState.connected,
+        2: uiState.quickCheckComplete,
+        3: uiState.precheckComplete,
+        4: uiState.measurementComplete,
+        5: false
+    };
+    const available = maxAvailableStep();
+    document.querySelectorAll(".stepper li").forEach(item => {
+        const step = Number(item.dataset.step);
+        const button = item.querySelector("button");
+        item.classList.toggle("active", step === uiState.currentStep);
+        item.classList.toggle("complete", Boolean(completed[step]));
+        item.classList.toggle("locked", step > available);
+        button.disabled = step > available || Boolean(uiState.currentMeasurement);
+        item.querySelector("span").textContent = completed[step] && step !== uiState.currentStep ? "✓" : step;
+    });
+}
 
-                    data = JSON.parse(
-                        text
-                    );
+function showStep(step) {
+    if (step > maxAvailableStep() || uiState.currentMeasurement) return;
+    uiState.currentStep = step;
+    document.querySelectorAll(".workflow-screen").forEach(screen => screen.hidden = true);
+    $(screens[step]).hidden = false;
+    updateStepper();
+    clearError();
+}
 
-                }
+function showMeasurementScreen() {
+    uiState.currentStep = 4;
+    document.querySelectorAll(".workflow-screen").forEach(screen => screen.hidden = true);
+    $("screenMeasurement").hidden = false;
+    updateStepper();
+}
 
-                catch {
+function selectedVehicleName() {
+    const option = $("vehicle").selectedOptions[0];
+    return option ? option.textContent.trim() : "";
+}
 
-                    throw new Error(
-                        text
-                    );
+async function connectSystem() {
+    clearError();
+    showMessage("");
+    const vehicleId = $("vehicle").value;
+    if (!vehicleId) {
+        showError("Bitte zuerst ein Fahrzeug auswählen.");
+        return;
+    }
+    setBusy($("connectButton"), true, "Verbindung wird hergestellt …", "Prüfung starten");
+    try {
+        const data = await apiRequest("/api/connect/" + vehicleId, {method: "POST"});
+        uiState.connected = true;
+        uiState.vehicleId = Number(vehicleId);
+        uiState.vehicleName = selectedVehicleName();
+        uiState.runId = data.test_run?.run_id || null;
+        uiState.signals = data.signals || [];
+        $("vehicle").disabled = true;
+        $("connectionResult").hidden = false;
+        $("checkRadest").className = "check-row ok";
+        $("checkDiagnosis").className = "check-row ok";
+        const distanceAvailable = uiState.signals.includes("distance");
+        $("checkSignals").className = "check-row " + (distanceAvailable ? "ok" : "warning");
+        $("signals").textContent = distanceAvailable
+            ? "Messsignale verfügbar: " + uiState.signals.join(", ")
+            : "Kein standardisiertes distance-Signal verfügbar";
+        $("toQuickCheckButton").disabled = false;
+        updateHeader();
+        updateStepper();
+    } catch (error) {
+        setBusy($("connectButton"), false, "", "Prüfung starten");
+        showError(error.message);
+    }
+}
 
-                }
+function createTextElement(tag, text, className = "") {
+    const element = document.createElement(tag);
+    element.textContent = text;
+    if (className) element.className = className;
+    return element;
+}
 
-
-                if (!response.ok) {
-
-                    throw new Error(
-                        data.detail
-                        || "Unbekannter Fehler"
-                    );
-
-                }
-
-
-                return data;
+function displayDtcs(ecuResults, errorMessage) {
+    const list = $("dtcList");
+    list.replaceChildren();
+    if (errorMessage) {
+        $("dtcStatus").textContent = "Lesefehler";
+        $("dtcStatus").className = "status-pill error";
+        list.append(createTextElement("p", errorMessage, "inline-warning"));
+        return {warning: true, count: 0};
+    }
+    if (!ecuResults?.length) {
+        $("dtcStatus").textContent = "Nicht konfiguriert";
+        $("dtcStatus").className = "status-pill neutral";
+        list.append(createTextElement("p", "Keine DTC-Konfiguration vorhanden.", "empty-inline"));
+        return {warning: false, count: 0};
+    }
+    let total = 0;
+    for (const ecu of ecuResults) {
+        const group = document.createElement("div");
+        group.className = "diagnostic-group";
+        group.append(createTextElement("strong", ecu.ecu_name));
+        group.append(createTextElement("span", "Statusmaske: " + ecu.status_availability_mask));
+        if (!ecu.dtcs.length) {
+            group.append(createTextElement("p", "Keine DTCs vorhanden."));
+        } else {
+            for (const dtc of ecu.dtcs) {
+                group.append(createTextElement("p", dtc.code + " · Status " + dtc.status, "dtc-entry"));
             }
-
-
-            // ====================================
-            // VERBINDEN
-            // ====================================
-
-            async function connectSystem() {
-
-                clearError();
-
-
-                const vehicleId =
-                    document.getElementById(
-                        "vehicle"
-                    ).value;
-
-
-                const status =
-                    document.getElementById(
-                        "status"
-                    );
-
-
-                status.textContent =
-                    "Verbindung wird hergestellt...";
-
-
-                document.getElementById(
-                    "connectButton"
-                ).disabled = true;
-
-
-                try {
-
-                    const data =
-                        await apiRequest(
-                            `/api/connect/${vehicleId}`,
-                            {
-                                method: "POST"
-                            }
-                        );
-
-
-                    status.textContent =
-                        "Testsystem verbunden";
-
-
-                    document.getElementById(
-                        "signals"
-                    ).textContent =
-                        "Verfügbare Signale: "
-                        + data.signals.join(", ");
-
-
-                    if (
-                        data.test_run
-                        &&
-                        data.test_run.run_id
-                    ) {
-
-                        document.getElementById(
-                            "testRun"
-                        ).textContent =
-                            data.test_run.run_id;
-
-                    }
-
-
-                    document.getElementById(
-                        "vehicle"
-                    ).disabled = true;
-
-
-                    document.getElementById(
-                        "connectButton"
-                    ).disabled = true;
-
-
-                    document.getElementById(
-                        "disconnectButton"
-                    ).disabled = false;
-
-
-                    document.getElementById(
-                        "quickCheckButton"
-                    ).disabled = false;
-
-
-                    // Precheck erst nach Quick Check
-                    document.getElementById(
-                        "precheckButton"
-                    ).disabled = true;
-
-
-                    document.getElementById(
-                        "skipPrecheckButton"
-                    ).disabled = true;
-
-                }
-
-                catch (error) {
-
-                    status.textContent =
-                        "Nicht verbunden";
-
-
-                    document.getElementById(
-                        "connectButton"
-                    ).disabled = false;
-
-
-                    showError(
-                        error.message
-                    );
-
-                }
-            }
-
-
-            // ====================================
-            // QUICK CHECK
-            // ====================================
-
-            async function runQuickCheck() {
-
-                clearError();
-
-
-                const button =
-                    document.getElementById(
-                        "quickCheckButton"
-                    );
-
-
-                button.disabled = true;
-
-                button.textContent =
-                    "Quick Check läuft...";
-
-
-                document.getElementById(
-                    "dtcStatus"
-                ).textContent =
-                    "wird gelesen...";
-
-
-                document.getElementById(
-                    "dtcList"
-                ).innerHTML = "";
-
-
-                document.getElementById(
-                    "identificationStatus"
-                ).textContent =
-                    "wird gelesen...";
-
-
-                document.getElementById(
-                    "identificationList"
-                ).innerHTML = "";
-
-
-                try {
-
-                    const data =
-                        await apiRequest(
-                            "/api/quick-check",
-                            {
-                                method: "POST"
-                            }
-                        );
-
-
-                    displayDtcs(
-                        data.dtcs_before,
-                        data.dtc_error
-                    );
-
-
-                    displayIdentification(
-                        data.identification,
-                        data.identification_summary
-                    );
-
-
-                    button.textContent =
-                        "Quick Check erneut starten";
-
-
-                    button.disabled = false;
-
-
-                    // Nach erfolgreichem Quick Check
-                    // darf der RadEsT Precheck gestartet werden
-                    document.getElementById(
-                        "precheckButton"
-                    ).disabled = false;
-
-
-                    document.getElementById(
-                        "skipPrecheckButton"
-                    ).disabled = false;
-
-                }
-
-                catch (error) {
-
-                    button.textContent =
-                        "Quick Check starten";
-
-
-                    button.disabled = false;
-
-
-                    document.getElementById(
-                        "dtcStatus"
-                    ).textContent =
-                        "Fehler";
-
-
-                    document.getElementById(
-                        "identificationStatus"
-                    ).textContent =
-                        "Fehler";
-
-
-                    showError(
-                        error.message
-                    );
-
-                }
-            }
-
-
-            // ====================================
-            // DTC-ERGEBNIS ANZEIGEN
-            // ====================================
-
-            function displayDtcs(
-                ecuResults,
-                errorMessage
-            ) {
-
-                const list =
-                    document.getElementById(
-                        "dtcList"
-                    );
-
-
-                list.innerHTML = "";
-
-
-                if (errorMessage) {
-
-                    document.getElementById(
-                        "dtcStatus"
-                    ).textContent =
-                        "Lesefehler: "
-                        + errorMessage;
-
-                    return;
-                }
-
-
-                if (
-                    !ecuResults
-                    ||
-                    ecuResults.length === 0
-                ) {
-
-                    document.getElementById(
-                        "dtcStatus"
-                    ).textContent =
-                        "Keine DTC-Konfiguration vorhanden";
-
-                    return;
-                }
-
-
-                let totalDtcs = 0;
-
-
-                for (
-                    const ecu of ecuResults
-                ) {
-
-                    totalDtcs +=
-                        ecu.dtcs.length;
-
-
-                    const ecuTitle =
-                        document.createElement(
-                            "p"
-                        );
-
-
-                    ecuTitle.innerHTML =
-                        "<strong>ECU:</strong> "
-                        + ecu.ecu_name;
-
-
-                    list.appendChild(
-                        ecuTitle
-                    );
-
-
-                    const mask =
-                        document.createElement(
-                            "p"
-                        );
-
-
-                    mask.className =
-                        "dtc";
-
-
-                    mask.textContent =
-                        "Status Availability Mask: "
-                        + ecu.status_availability_mask;
-
-
-                    list.appendChild(
-                        mask
-                    );
-
-
-                    if (
-                        ecu.dtcs.length === 0
-                    ) {
-
-                        const empty =
-                            document.createElement(
-                                "p"
-                            );
-
-
-                        empty.className =
-                            "dtc";
-
-
-                        empty.textContent =
-                            "Keine DTCs vorhanden";
-
-
-                        list.appendChild(
-                            empty
-                        );
-
-
-                        continue;
-                    }
-
-
-                    for (
-                        const dtc of ecu.dtcs
-                    ) {
-
-                        const item =
-                            document.createElement(
-                                "p"
-                            );
-
-
-                        item.className =
-                            "dtc";
-
-
-                        item.textContent =
-                            "DTC: "
-                            + dtc.code
-                            + " | Status: "
-                            + dtc.status;
-
-
-                        list.appendChild(
-                            item
-                        );
-
-                    }
-
-                }
-
-
-                if (totalDtcs === 0) {
-
-                    document.getElementById(
-                        "dtcStatus"
-                    ).textContent =
-                        "Keine Fehler gespeichert";
-
-                }
-
-                else {
-
-                    document.getElementById(
-                        "dtcStatus"
-                    ).textContent =
-                        totalDtcs
-                        + " DTC(s) gefunden";
-
-                }
-            }
-
-
-            // ====================================
-            // STEUERGERÄTE-IDENTIFIKATION ANZEIGEN
-            // ====================================
-
-            function displayIdentification(
-                results,
-                summary
-            ) {
-
-                const container =
-                    document.getElementById(
-                        "identificationList"
-                    );
-
-
-                container.innerHTML = "";
-
-
-                if (!results || results.length === 0) {
-
-                    document.getElementById(
-                        "identificationStatus"
-                    ).textContent =
-                        "Keine Parameter konfiguriert";
-
-                    return;
-                }
-
-
-                const statusLabels = {
-                    match: "Referenz erkannt",
-                    mismatch: "Nicht in Referenzliste",
-                    unknown: "Keine Referenz hinterlegt",
-                    read_error: "Lesefehler"
-                };
-
-
-                const table = document.createElement(
-                    "table"
-                );
-
-                table.className =
-                    "identification-table";
-
-
-                const header = table.insertRow();
-
-                for (const title of [
-                    "Merkmal",
-                    "Steuergerät",
-                    "Istwert",
-                    "Rohantwort",
-                    "Referenz",
-                    "Bewertung"
-                ]) {
-
-                    const cell = document.createElement(
-                        "th"
-                    );
-
-                    cell.textContent = title;
-                    header.appendChild(cell);
-                }
-
-
-                for (const item of results) {
-
-                    const row = table.insertRow();
-
-                    const references = (
-                        item.accepted_values || []
-                    ).map(
-                        entry => entry.value
-                    ).join(", ");
-
-                    const values = [
-                        item.label
-                            + " (" + item.did + ")",
-                        item.ecu_name,
-                        item.read_status === "ok"
-                            ? String(item.value)
-                            : item.error_message,
-                        item.raw_response || "-",
-                        references || "-",
-                        statusLabels[item.status]
-                            || item.status
-                    ];
-
-                    for (const value of values) {
-
-                        const cell = row.insertCell();
-                        cell.textContent = value || "-";
-                    }
-                }
-
-
-                container.appendChild(table);
-
-
-                document.getElementById(
-                    "identificationStatus"
-                ).textContent =
-                    summary.match + " erkannt, "
-                    + summary.mismatch + " unbekannt, "
-                    + summary.unknown + " ohne Referenz, "
-                    + summary.read_error + " Lesefehler";
-            }
-
-
-            // ====================================
-            // RADEST PRECHECK
-            // ====================================
-
-            async function runPrecheck() {
-
-                clearError();
-
-
-                const button =
-                    document.getElementById(
-                        "precheckButton"
-                    );
-
-
-                button.disabled = true;
-
-                button.textContent =
-                    "Precheck läuft...";
-
-
-                try {
-
-                    const data =
-                        await apiRequest(
-                            "/api/precheck",
-                            {
-                                method: "POST"
-                            }
-                        );
-
-
-                    document.getElementById(
-                        "polarization"
-                    ).textContent =
-                        data.polarization;
-
-
-                    if (
-                        Array.isArray(
-                            data.frequency_range
-                        )
-                    ) {
-
-                        document.getElementById(
-                            "frequency"
-                        ).textContent =
-                            data.frequency_range.join(
-                                " - "
-                            )
-                            + " GHz";
-
-                    }
-
-                    else {
-
-                        document.getElementById(
-                            "frequency"
-                        ).textContent =
-                            data.frequency_range;
-
-                    }
-
-
-                    document.getElementById(
-                        "power"
-                    ).textContent =
-                        data.power;
-
-
-                    enableMeasurementControls();
-
-
-                    document.getElementById(
-                        "skipPrecheckButton"
-                    ).disabled = true;
-
-
-                    button.textContent =
-                        "Precheck erneut starten";
-
-
-                    button.disabled = false;
-
-                }
-
-                catch (error) {
-
-                    button.textContent =
-                        "Precheck starten";
-
-
-                    button.disabled = false;
-
-
-                    showError(
-                        error.message
-                    );
-
-                }
-            }
-
-
-            async function skipPrecheck() {
-
-                clearError();
-
-                const button =
-                    document.getElementById(
-                        "skipPrecheckButton"
-                    );
-
-                button.disabled = true;
-
-                try {
-
-                    await apiRequest(
-                        "/api/precheck/skip",
-                        {
-                            method: "POST"
-                        }
-                    );
-
-                    document.getElementById(
-                        "polarization"
-                    ).textContent = "Übersprungen";
-
-                    document.getElementById(
-                        "frequency"
-                    ).textContent = "Übersprungen";
-
-                    document.getElementById(
-                        "power"
-                    ).textContent = "Übersprungen";
-
-                    button.textContent =
-                        "Precheck übersprungen";
-
-                    enableMeasurementControls();
-
-                }
-
-                catch (error) {
-
-                    button.disabled = false;
-
-                    showError(
-                        error.message
-                    );
-
-                }
-            }
-
-
-            function enableMeasurementControls() {
-
-                for (const id of [
-                    "distanceInput",
-                    "staticButton",
-                    "dynamicStartDistanceInput",
-                    "dynamicEndDistanceInput",
-                    "dynamicVelocityInput",
-                    "dynamicButton"
-                ]) {
-                    document.getElementById(
-                        id
-                    ).disabled = false;
-                }
-            }
-
-
-            // ====================================
-            // STATISCHE MESSUNG STARTEN
-            // ====================================
-
-            async function startStaticMeasurement() {
-
-                clearError();
-
-
-                const distance =
-                    document.getElementById(
-                        "distanceInput"
-                    ).value;
-
-
-                try {
-
-                    const data =
-                        await apiRequest(
-                            `/api/static/start?distance_m=${distance}`,
-                            {
-                                method: "POST"
-                            }
-                        );
-
-
-                    document.getElementById(
-                        "requestedDistance"
-                    ).textContent =
-                        Number(
-                            data.requested_distance
-                        ).toFixed(2);
-
-
-                    document.getElementById(
-                        "radestDistance"
-                    ).textContent =
-                        Number(
-                            data.radest_distance
-                        ).toFixed(2);
-
-
-                    if (data.log_file) {
-
-                        document.getElementById(
-                            "logFile"
-                        ).textContent =
-                            data.log_file;
-
-                    }
-
-
-                    startLiveMeasurement();
-
-                }
-
-                catch (error) {
-
-                    showError(
-                        error.message
-                    );
-
-                }
-            }
-
-
-            // ====================================
-            // DYNAMISCHE MESSUNG STARTEN
-            // ====================================
-
-            async function startDynamicMeasurement() {
-
-                clearError();
-
-
-                const startDistance =
-                    document.getElementById(
-                        "dynamicStartDistanceInput"
-                    ).value;
-
-
-                const endDistance =
-                    document.getElementById(
-                        "dynamicEndDistanceInput"
-                    ).value;
-
-
-                const velocity =
-                    document.getElementById(
-                        "dynamicVelocityInput"
-                    ).value;
-
-
-                const button =
-                    document.getElementById(
-                        "dynamicButton"
-                    );
-
-
-                button.disabled = true;
-
-                button.textContent =
-                    "Scenario läuft...";
-
-
-                document.getElementById(
-                    "scenarioStatus"
-                ).textContent =
-                    "Wird vorbereitet...";
-
-
-                try {
-
-                    const url =
-                        "/api/dynamic/start"
-                        + `?start_distance_m=${startDistance}`
-                        + `&end_distance_m=${endDistance}`
-                        + `&velocity_kmh=${velocity}`;
-
-
-                    const data =
-                        await apiRequest(
-                            url,
-                            {
-                                method: "POST"
-                            }
-                        );
-
-
-                    document.getElementById(
-                        "requestedDistance"
-                    ).textContent =
-                        Number(
-                            data.start_distance
-                        ).toFixed(2);
-
-
-                    document.getElementById(
-                        "radestDistance"
-                    ).textContent =
-                        Number(
-                            data.start_distance
-                        ).toFixed(2);
-
-
-                    document.getElementById(
-                        "scenarioDuration"
-                    ).textContent =
-                        Number(
-                            data.total_duration_s
-                        ).toFixed(2);
-
-
-                    document.getElementById(
-                        "scenarioProgress"
-                    ).textContent =
-                        "0.0 %";
-
-
-                    document.getElementById(
-                        "scenarioStatus"
-                    ).textContent =
-                        "Läuft";
-
-
-                    document.getElementById(
-                        "scenarioPhase"
-                    ).textContent =
-                        "Startdistanz halten";
-
-
-                    if (data.log_file) {
-
-                        document.getElementById(
-                            "logFile"
-                        ).textContent =
-                            data.log_file;
-
-                    }
-
-
-                    startLiveMeasurement();
-
-                }
-
-                catch (error) {
-
-                    button.disabled = false;
-
-                    button.textContent =
-                        "Scenario starten";
-
-
-                    document.getElementById(
-                        "scenarioStatus"
-                    ).textContent =
-                        "Fehler";
-
-
-                    showError(
-                        error.message
-                    );
-
-                }
-            }
-
-
-            // ====================================
-            // WEBSOCKET STARTEN
-            // ====================================
-
-            function startLiveMeasurement() {
-
-                stopLiveMeasurement();
-
-
-                const protocol =
-                    window.location.protocol === "https:"
-                    ? "wss:"
-                    : "ws:";
-
-
-                const socketUrl =
-                    `${protocol}//${window.location.host}/ws/static`;
-
-
-                measurementSocket =
-                    new WebSocket(
-                        socketUrl
-                    );
-
-
-                measurementSocket.onopen =
-                    function() {
-
-                        console.log(
-                            "WebSocket verbunden"
-                        );
-
-
-                        document.getElementById(
-                            "stopButton"
-                        ).disabled = false;
-
-                    };
-
-
-                measurementSocket.onmessage =
-                    function(event) {
-
-                        const message =
-                            JSON.parse(
-                                event.data
-                            );
-
-
-                        if (
-                            message.type
-                            === "measurement"
-                        ) {
-
-                            updateMeasurement(
-                                message.data
-                            );
-
-                        }
-
-
-                        if (
-                            message.type
-                            === "error"
-                        ) {
-
-                            showError(
-                                message.message
-                            );
-
-
-                            stopLiveMeasurement();
-
-                        }
-
-
-                        if (
-                            message.type
-                            === "complete"
-                        ) {
-
-                            document.getElementById(
-                                "scenarioStatus"
-                            ).textContent =
-                                "Beendet";
-
-
-                            document.getElementById(
-                                "scenarioPhase"
-                            ).textContent =
-                                "Enddistanz gehalten";
-
-
-                            document.getElementById(
-                                "scenarioProgress"
-                            ).textContent =
-                                "100.0 %";
-
-
-                            const dynamicButton =
-                                document.getElementById(
-                                    "dynamicButton"
-                                );
-
-
-                            dynamicButton.disabled = false;
-
-                            dynamicButton.textContent =
-                                "Scenario erneut starten";
-
-
-                            stopLiveMeasurement();
-
-                        }
-                    };
-
-
-                measurementSocket.onerror =
-                    function() {
-
-                        showError(
-                            "WebSocket-Verbindung fehlgeschlagen"
-                        );
-
-                    };
-
-
-                measurementSocket.onclose =
-                    function() {
-
-                        console.log(
-                            "WebSocket getrennt"
-                        );
-
-
-                        measurementSocket = null;
-
-
-                        document.getElementById(
-                            "stopButton"
-                        ).disabled = true;
-
-                    };
-            }
-
-
-            // ====================================
-            // LIVE-MESSWERT ANZEIGEN
-            // ====================================
-
-            function updateMeasurement(
-                data
-            ) {
-
-                if (
-                    data.test_type
-                    === "dynamic"
-                ) {
-
-                    const phaseLabels = {
-                        pre_hold: "Startdistanz halten",
-                        moving: "Bewegung",
-                        post_hold: "Enddistanz halten"
-                    };
-
-                    document.getElementById(
-                        "scenarioDuration"
-                    ).textContent =
-                        Number(
-                            data.dynamic_total_duration_s
-                        ).toFixed(2);
-
-
-                    document.getElementById(
-                        "scenarioProgress"
-                    ).textContent =
-                        (
-                            Number(
-                                data.scenario_progress
-                            )
-                            * 100
-                        ).toFixed(1)
-                        + " %";
-
-
-                    document.getElementById(
-                        "scenarioStatus"
-                    ).textContent =
-                        data.scenario_done
-                        ? "Beendet"
-                        : "Läuft";
-
-
-                    document.getElementById(
-                        "scenarioPhase"
-                    ).textContent =
-                        phaseLabels[data.phase]
-                        || data.phase
-                        || "-";
-
-                }
-
-                document.getElementById(
-                    "requestedDistance"
-                ).textContent =
-                    Number(
-                        data.requested_distance
-                    ).toFixed(2);
-
-
-                document.getElementById(
-                    "radestDistance"
-                ).textContent =
-                    Number(
-                        data.radest_distance
-                    ).toFixed(2);
-
-
-                const vehicle =
-                    data.vehicle;
-
-
-                if (vehicle.distance) {
-
-                    document.getElementById(
-                        "vehicleDistance"
-                    ).textContent =
-                        Number(
-                            vehicle.distance.value
-                        ).toFixed(2);
-
-                }
-
-                else {
-
-                    document.getElementById(
-                        "vehicleDistance"
-                    ).textContent = "-";
-
-                }
-
-
-                if (
-                    data.distance_error !== null
-                    &&
-                    data.distance_error !== undefined
-                ) {
-
-                    document.getElementById(
-                        "distanceError"
-                    ).textContent =
-                        Number(
-                            data.distance_error
-                        ).toFixed(2);
-
-                }
-
-                else {
-
-                    document.getElementById(
-                        "distanceError"
-                    ).textContent = "-";
-
-                }
-
-
-                if (vehicle.angle) {
-
-                    document.getElementById(
-                        "angle"
-                    ).textContent =
-                        Number(
-                            vehicle.angle.value
-                        ).toFixed(2)
-                        + " "
-                        + vehicle.angle.unit;
-
-                }
-
-                else {
-
-                    document.getElementById(
-                        "angle"
-                    ).textContent = "-";
-
-                }
-
-
-                if (
-                    vehicle.relative_speed
-                ) {
-
-                    document.getElementById(
-                        "relativeSpeed"
-                    ).textContent =
-                        Number(
-                            vehicle.relative_speed.value
-                        ).toFixed(2)
-                        + " "
-                        + vehicle.relative_speed.unit;
-
-                }
-
-                else {
-
-                    document.getElementById(
-                        "relativeSpeed"
-                    ).textContent = "-";
-
-                }
-
-
-                if (
-                    vehicle.relative_acceleration
-                ) {
-
-                    document.getElementById(
-                        "relativeAcceleration"
-                    ).textContent =
-                        Number(
-                            vehicle.relative_acceleration.value
-                        ).toFixed(2)
-                        + " "
-                        + vehicle.relative_acceleration.unit;
-
-                }
-
-                else {
-
-                    document.getElementById(
-                        "relativeAcceleration"
-                    ).textContent = "-";
-
-                }
-            }
-
-
-            // ====================================
-            // MESSUNG STOPPEN
-            // ====================================
-
-            async function stopMeasurement() {
-
-                clearError();
-
-                try {
-
-                    const data = await apiRequest(
-                        "/api/measurement/stop",
-                        {
-                            method: "POST"
-                        }
-                    );
-
-                    stopLiveMeasurement();
-
-                    document.getElementById(
-                        "scenarioStatus"
-                    ).textContent =
-                        data.status === "aborted"
-                        ? "Abgebrochen"
-                        : "Beendet";
-
-                    document.getElementById(
-                        "dynamicButton"
-                    ).disabled = false;
-
-                    document.getElementById(
-                        "dynamicButton"
-                    ).textContent =
-                        "Scenario erneut starten";
-
-                }
-
-                catch (error) {
-
-                    showError(
-                        error.message
-                    );
-
-                }
-            }
-
-
-            // ====================================
-            // WEBSOCKET STOPPEN
-            // ====================================
-
-            function stopLiveMeasurement() {
-
-                if (
-                    measurementSocket !== null
-                ) {
-
-                    measurementSocket.close();
-
-                    measurementSocket = null;
-
-                }
-
-
-                document.getElementById(
-                    "stopButton"
-                ).disabled = true;
-            }
-
-
-            // ====================================
-            // TESTSYSTEM TRENNEN
-            // ====================================
-
-            async function disconnectSystem() {
-
-                clearError();
-
-
-                stopLiveMeasurement();
-
-
-                try {
-
-                    await apiRequest(
-                        "/api/disconnect",
-                        {
-                            method: "POST"
-                        }
-                    );
-
-
-                    document.getElementById(
-                        "status"
-                    ).textContent =
-                        "Nicht verbunden";
-
-
-                    document.getElementById(
-                        "signals"
-                    ).textContent = "";
-
-
-                    document.getElementById(
-                        "vehicle"
-                    ).disabled = false;
-
-
-                    document.getElementById(
-                        "connectButton"
-                    ).disabled = false;
-
-
-                    document.getElementById(
-                        "disconnectButton"
-                    ).disabled = true;
-
-
-                    document.getElementById(
-                        "quickCheckButton"
-                    ).disabled = true;
-
-
-                    document.getElementById(
-                        "quickCheckButton"
-                    ).textContent =
-                        "Quick Check starten";
-
-
-                    document.getElementById(
-                        "precheckButton"
-                    ).disabled = true;
-
-
-                    document.getElementById(
-                        "precheckButton"
-                    ).textContent =
-                        "Precheck starten";
-
-
-                    document.getElementById(
-                        "skipPrecheckButton"
-                    ).disabled = true;
-
-
-                    document.getElementById(
-                        "skipPrecheckButton"
-                    ).textContent =
-                        "Precheck überspringen";
-
-
-                    document.getElementById(
-                        "staticButton"
-                    ).disabled = true;
-
-
-                    document.getElementById(
-                        "distanceInput"
-                    ).disabled = true;
-
-
-                    document.getElementById(
-                        "dynamicButton"
-                    ).disabled = true;
-
-
-                    document.getElementById(
-                        "dynamicButton"
-                    ).textContent =
-                        "Scenario starten";
-
-
-                    document.getElementById(
-                        "dynamicStartDistanceInput"
-                    ).disabled = true;
-
-
-                    document.getElementById(
-                        "dynamicEndDistanceInput"
-                    ).disabled = true;
-
-
-                    document.getElementById(
-                        "dynamicVelocityInput"
-                    ).disabled = true;
-
-
-                    resetValues();
-
-                }
-
-                catch (error) {
-
-                    showError(
-                        error.message
-                    );
-
-                }
-            }
-
-
-            // ====================================
-            // ANZEIGE ZURÜCKSETZEN
-            // ====================================
-
-            function resetValues() {
-
-                document.getElementById(
-                    "testRun"
-                ).textContent = "-";
-
-
-                document.getElementById(
-                    "dtcStatus"
-                ).textContent = "-";
-
-
-                document.getElementById(
-                    "dtcList"
-                ).innerHTML = "";
-
-
-                document.getElementById(
-                    "identificationStatus"
-                ).textContent = "-";
-
-
-                document.getElementById(
-                    "identificationList"
-                ).innerHTML = "";
-
-
-                document.getElementById(
-                    "polarization"
-                ).textContent = "-";
-
-
-                document.getElementById(
-                    "frequency"
-                ).textContent = "-";
-
-
-                document.getElementById(
-                    "power"
-                ).textContent = "-";
-
-
-                document.getElementById(
-                    "requestedDistance"
-                ).textContent = "-";
-
-
-                document.getElementById(
-                    "radestDistance"
-                ).textContent = "-";
-
-
-                document.getElementById(
-                    "vehicleDistance"
-                ).textContent = "-";
-
-
-                document.getElementById(
-                    "distanceError"
-                ).textContent = "-";
-
-
-                document.getElementById(
-                    "angle"
-                ).textContent = "-";
-
-
-                document.getElementById(
-                    "relativeSpeed"
-                ).textContent = "-";
-
-
-                document.getElementById(
-                    "relativeAcceleration"
-                ).textContent = "-";
-
-
-                document.getElementById(
-                    "logFile"
-                ).textContent = "-";
-
-
-                document.getElementById(
-                    "scenarioStatus"
-                ).textContent = "-";
-
-
-                document.getElementById(
-                    "scenarioPhase"
-                ).textContent = "-";
-
-
-                document.getElementById(
-                    "scenarioDuration"
-                ).textContent = "-";
-
-
-                document.getElementById(
-                    "scenarioProgress"
-                ).textContent = "-";
-            }
-
-
-            // ====================================
-            // FEHLER
-            // ====================================
-
-            function showError(
-                message
-            ) {
-
-                document.getElementById(
-                    "error"
-                ).textContent =
-                    "Fehler: "
-                    + message;
-            }
-
-
-            function clearError() {
-
-                document.getElementById(
-                    "error"
-                ).textContent = "";
-            }
-
-        
+        }
+        total += ecu.dtcs.length;
+        list.append(group);
+    }
+    $("dtcStatus").textContent = total ? total + " DTC(s)" : "Keine Fehler";
+    $("dtcStatus").className = "status-pill " + (total ? "warning" : "success");
+    return {warning: total > 0, count: total};
+}
+
+function displayIdentification(results, summary = {}) {
+    const container = $("identificationList");
+    container.replaceChildren();
+    if (!results?.length) {
+        $("identificationStatus").textContent = "Nicht konfiguriert";
+        $("identificationStatus").className = "status-pill neutral";
+        container.append(createTextElement("p", "Keine Identifikationsparameter konfiguriert.", "empty-inline"));
+        return {warning: false};
+    }
+    const statusLabels = {
+        match: "Referenz erkannt",
+        mismatch: "Nicht in Referenzliste",
+        unknown: "Keine Referenz hinterlegt",
+        read_error: "Lesefehler"
+    };
+    const table = document.createElement("table");
+    table.className = "identification-table";
+    const header = table.insertRow();
+    ["Merkmal", "Steuergerät", "Istwert", "Referenz", "Bewertung"].forEach(title => {
+        header.append(createTextElement("th", title));
+    });
+    for (const item of results) {
+        const row = table.insertRow();
+        const references = (item.accepted_values || []).map(entry => entry.value).join(", ");
+        const values = [
+            item.label + " (" + item.did + ")",
+            item.ecu_name,
+            item.read_status === "ok" ? String(item.value) : item.error_message,
+            references || "–",
+            statusLabels[item.status] || item.status
+        ];
+        values.forEach(value => row.insertCell().textContent = value || "–");
+        row.className = item.status === "match" ? "row-success" : item.status === "unknown" ? "" : "row-warning";
+    }
+    container.append(table);
+    const warnings = Number(summary.mismatch || 0) + Number(summary.read_error || 0);
+    $("identificationStatus").textContent = warnings ? warnings + " Auffälligkeit(en)" : (summary.match || 0) + " erkannt";
+    $("identificationStatus").className = "status-pill " + (warnings ? "warning" : "success");
+    return {warning: warnings > 0};
+}
+
+function renderQuickCheck(data) {
+    const dtc = displayDtcs(data.dtcs_before, data.dtc_error);
+    const identification = displayIdentification(data.identification, data.identification_summary);
+    const warning = dtc.warning || identification.warning;
+    $("quickCheckSummary").className = "result-banner " + (warning ? "warning" : "success");
+    $("quickCheckSummary").textContent = warning
+        ? "Quick Check abgeschlossen – Auffälligkeiten prüfen, bewusstes Fortfahren ist möglich."
+        : "Quick Check erfolgreich abgeschlossen.";
+    $("quickCheckResult").hidden = false;
+}
+
+async function runQuickCheck() {
+    clearError();
+    setBusy($("quickCheckButton"), true, "Quick Check läuft …", "Quick Check starten");
+    try {
+        const data = await apiRequest("/api/quick-check", {method: "POST"});
+        uiState.quickCheckResult = data;
+        uiState.quickCheckComplete = true;
+        renderQuickCheck(data);
+        $("quickCheckButton").textContent = "Quick Check erneut starten";
+        $("quickCheckButton").disabled = false;
+        $("toPrecheckButton").disabled = false;
+        updateStepper();
+    } catch (error) {
+        setBusy($("quickCheckButton"), false, "", "Quick Check starten");
+        showError(error.message);
+    }
+}
+
+function formatFrequency(value) {
+    if (Array.isArray(value)) return value.join(" – ") + " GHz";
+    return value ?? "–";
+}
+
+function renderPrecheck(data) {
+    const skipped = Boolean(data.skipped);
+    $("precheckResult").hidden = false;
+    $("precheckSummary").className = "result-banner " + (skipped ? "warning" : "success");
+    $("precheckSummary").textContent = skipped
+        ? "Precheck bewusst übersprungen und im TestRun dokumentiert."
+        : "Precheck abgeschlossen – RadEsT-Werte wurden erfasst.";
+    $("precheckConnection").textContent = skipped ? "Nicht geprüft" : "✓ Verbunden";
+    $("frequency").textContent = skipped ? "Übersprungen" : formatFrequency(data.frequency_range);
+    $("polarization").textContent = skipped ? "Übersprungen" : (data.polarization ?? "–");
+    $("power").textContent = skipped ? "Übersprungen" : (data.power ?? "–");
+}
+
+async function runPrecheck() {
+    clearError();
+    setBusy($("precheckButton"), true, "Precheck läuft …", "Precheck starten");
+    try {
+        const data = await apiRequest("/api/precheck", {method: "POST"});
+        uiState.precheckComplete = true;
+        uiState.precheckSkipped = false;
+        renderPrecheck(data);
+        $("precheckButton").textContent = "Precheck erneut starten";
+        $("precheckButton").disabled = false;
+        $("skipPrecheckButton").disabled = true;
+        $("toTestsButton").disabled = false;
+        updateStepper();
+    } catch (error) {
+        setBusy($("precheckButton"), false, "", "Precheck starten");
+        showError(error.message);
+    }
+}
+
+async function skipPrecheck() {
+    clearError();
+    setBusy($("skipPrecheckButton"), true, "Wird dokumentiert …", "Precheck überspringen");
+    try {
+        const data = await apiRequest("/api/precheck/skip", {method: "POST"});
+        uiState.precheckComplete = true;
+        uiState.precheckSkipped = true;
+        renderPrecheck(data);
+        $("precheckButton").disabled = false;
+        $("skipPrecheckButton").textContent = "Precheck übersprungen";
+        $("toTestsButton").disabled = false;
+        updateStepper();
+    } catch (error) {
+        setBusy($("skipPrecheckButton"), false, "", "Precheck überspringen");
+        showError(error.message);
+    }
+}
+
+function staticConfiguration() {
+    const distance = Number($("distanceInput").value);
+    if (!Number.isFinite(distance) || distance <= 0) throw new Error("Distanz muss größer als 0 m sein.");
+    return {
+        type: "static",
+        title: "Statische Messung",
+        description: distance.toFixed(1) + " m konstante Zieldistanz",
+        resultParameters: distance.toFixed(1) + " m",
+        url: "/api/static/start?distance_m=" + encodeURIComponent(distance)
+    };
+}
+
+function dynamicConfiguration() {
+    const start = Number($("dynamicStartDistanceInput").value);
+    const end = Number($("dynamicEndDistanceInput").value);
+    const velocity = Number($("dynamicVelocityInput").value);
+    if (![start, end, velocity].every(Number.isFinite) || start <= 0 || end <= 0 || velocity <= 0) {
+        throw new Error("Distanzen und Geschwindigkeit müssen größer als 0 sein.");
+    }
+    if (start === end) throw new Error("Start- und Enddistanz müssen unterschiedlich sein.");
+    return {
+        type: "dynamic",
+        title: "Dynamische Messung",
+        description: start.toFixed(1) + " m → " + end.toFixed(1) + " m | " + velocity.toFixed(1) + " km/h",
+        resultParameters: start.toFixed(1) + " m → " + end.toFixed(1) + " m · " + velocity.toFixed(1) + " km/h",
+        url: "/api/dynamic/start?start_distance_m=" + encodeURIComponent(start)
+            + "&end_distance_m=" + encodeURIComponent(end)
+            + "&velocity_kmh=" + encodeURIComponent(velocity)
+    };
+}
+
+function resetMeasurementDisplay(configuration) {
+    uiState.samples = [];
+    uiState.lastMeasurement = null;
+    uiState.logFile = null;
+    uiState.measurementStartedAt = performance.now();
+    $("measurementTitle").textContent = configuration.title;
+    $("measurementDescription").textContent = configuration.description;
+    $("measurementState").className = "live-badge";
+    $("measurementState").lastChild.textContent = "Live";
+    ["requestedDistance", "radestDistance", "vehicleDistance", "distanceError", "angle",
+        "relativeSpeed", "relativeAcceleration", "scenarioPhase", "scenarioProgress",
+        "scenarioDuration", "measurementElapsed"].forEach(id => $(id).textContent = "–");
+    $("scenarioStatus").textContent = "Läuft";
+    $("stopButton").disabled = true;
+    drawChart();
+}
+
+async function startConfiguredMeasurement(configuration) {
+    clearError();
+    uiState.lastConfiguration = configuration;
+    uiState.measurementComplete = false;
+    uiState.currentMeasurement = configuration;
+    resetMeasurementDisplay(configuration);
+    showMeasurementScreen();
+    try {
+        const data = await apiRequest(configuration.url, {method: "POST"});
+        uiState.logFile = data.log_file || null;
+        if (configuration.type === "static") {
+            $("requestedDistance").textContent = fixed(data.requested_distance);
+            $("radestDistance").textContent = fixed(data.radest_distance);
+            $("scenarioPhase").textContent = "Konstante Distanz";
+            $("scenarioProgress").textContent = "laufend";
+        } else {
+            $("requestedDistance").textContent = fixed(data.start_distance);
+            $("radestDistance").textContent = fixed(data.start_distance);
+            $("scenarioDuration").textContent = fixed(data.total_duration_s);
+            $("scenarioPhase").textContent = "Startdistanz halten";
+            $("scenarioProgress").textContent = "0,0 %";
+        }
+        startLiveMeasurement();
+    } catch (error) {
+        uiState.currentMeasurement = null;
+        showStep(4);
+        showError(error.message);
+    }
+}
+
+async function startStaticMeasurement() {
+    try {
+        await startConfiguredMeasurement(staticConfiguration());
+    } catch (error) {
+        showError(error.message);
+    }
+}
+
+async function startDynamicMeasurement() {
+    try {
+        await startConfiguredMeasurement(dynamicConfiguration());
+    } catch (error) {
+        showError(error.message);
+    }
+}
+
+function startLiveMeasurement() {
+    stopLiveMeasurement(true);
+    socketClosingIntentionally = false;
+    const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+    measurementSocket = new WebSocket(protocol + "//" + location.host + "/ws/static");
+    measurementSocket.onopen = () => {
+        $("stopButton").disabled = false;
+    };
+    measurementSocket.onmessage = event => {
+        const message = JSON.parse(event.data);
+        if (message.type === "measurement") updateMeasurement(message.data);
+        if (message.type === "complete") {
+            stopLiveMeasurement(true);
+            finishMeasurement("finished");
+        }
+        if (message.type === "error") {
+            stopLiveMeasurement(true);
+            setIndicator("diagnosisIndicator", "error");
+            finishMeasurement("failed", message.message);
+        }
+    };
+    measurementSocket.onerror = () => {
+        if (!socketClosingIntentionally) showError("WebSocket-Verbindung fehlgeschlagen.");
+    };
+    measurementSocket.onclose = () => {
+        measurementSocket = null;
+        $("stopButton").disabled = true;
+    };
+}
+
+function fixed(value, digits = 2) {
+    const number = Number(value);
+    return Number.isFinite(number) ? number.toFixed(digits) : "–";
+}
+
+function updateMeasurement(data) {
+    uiState.lastMeasurement = data;
+    uiState.samples.push({
+        time: Number(data.elapsed_s),
+        radest: Number(data.radest_distance),
+        vehicle: Number(data.vehicle?.distance?.value),
+        error: Number(data.distance_error)
+    });
+    $("requestedDistance").textContent = fixed(data.requested_distance);
+    $("radestDistance").textContent = fixed(data.radest_distance);
+    $("vehicleDistance").textContent = fixed(data.vehicle?.distance?.value);
+    $("distanceError").textContent = fixed(data.distance_error);
+    $("measurementElapsed").textContent = fixed(data.elapsed_s);
+    $("angle").textContent = signalText(data.vehicle?.angle);
+    $("relativeSpeed").textContent = signalText(data.vehicle?.relative_speed);
+    $("relativeAcceleration").textContent = signalText(data.vehicle?.relative_acceleration);
+    if (data.test_type === "dynamic") {
+        const phaseLabels = {pre_hold: "Startdistanz halten", moving: "Bewegung", post_hold: "Enddistanz halten"};
+        $("scenarioPhase").textContent = phaseLabels[data.phase] || data.phase || "–";
+        $("scenarioProgress").textContent = fixed(Number(data.scenario_progress) * 100, 1) + " %";
+        $("scenarioDuration").textContent = fixed(data.dynamic_total_duration_s);
+    }
+    drawChart();
+}
+
+function signalText(signal) {
+    return signal && Number.isFinite(Number(signal.value))
+        ? fixed(signal.value) + (signal.unit ? " " + signal.unit : "")
+        : "–";
+}
+
+function drawChart() {
+    const canvas = $("liveChart");
+    const width = Math.max(320, canvas.clientWidth || 900);
+    const height = 320;
+    const ratio = window.devicePixelRatio || 1;
+    canvas.width = width * ratio;
+    canvas.height = height * ratio;
+    const context = canvas.getContext("2d");
+    context.scale(ratio, ratio);
+    context.clearRect(0, 0, width, height);
+    const pad = {left: 48, right: 18, top: 28, bottom: 34};
+    const points = uiState.samples.filter(point => Number.isFinite(point.time) && Number.isFinite(point.radest));
+    context.font = "12px Arial";
+    context.fillStyle = "#63756d";
+    if (points.length < 2) {
+        context.textAlign = "center";
+        context.fillText("Der Live-Verlauf erscheint mit den ersten Messpunkten.", width / 2, height / 2);
+        return;
+    }
+    const values = points.flatMap(point => [point.radest, point.vehicle]).filter(Number.isFinite);
+    let minY = Math.min(...values);
+    let maxY = Math.max(...values);
+    const margin = Math.max(0.5, (maxY - minY) * 0.12);
+    minY -= margin;
+    maxY += margin;
+    const minX = points[0].time;
+    const maxX = Math.max(points.at(-1).time, minX + 0.1);
+    const x = value => pad.left + (value - minX) / (maxX - minX) * (width - pad.left - pad.right);
+    const y = value => pad.top + (maxY - value) / (maxY - minY) * (height - pad.top - pad.bottom);
+    context.strokeStyle = "#d5e5dc";
+    context.lineWidth = 1;
+    for (let index = 0; index <= 4; index++) {
+        const py = pad.top + index / 4 * (height - pad.top - pad.bottom);
+        context.beginPath(); context.moveTo(pad.left, py); context.lineTo(width - pad.right, py); context.stroke();
+        context.fillStyle = "#63756d"; context.textAlign = "right";
+        context.fillText((maxY - index / 4 * (maxY - minY)).toFixed(1), pad.left - 7, py + 4);
+    }
+    drawSeries(context, points, "radest", x, y, "#008143");
+    drawSeries(context, points, "vehicle", x, y, "#d58a00");
+    context.textAlign = "left"; context.fillStyle = "#008143"; context.fillText("— RadEsT", pad.left, 15);
+    context.fillStyle = "#d58a00"; context.fillText("— Fahrzeug", pad.left + 85, 15);
+    context.fillStyle = "#63756d"; context.textAlign = "center";
+    context.fillText((maxX - minX).toFixed(1) + " s", width - pad.right - 18, height - 10);
+}
+
+function drawSeries(context, points, key, x, y, color) {
+    context.strokeStyle = color;
+    context.lineWidth = 2.5;
+    context.beginPath();
+    let started = false;
+    for (const point of points) {
+        if (!Number.isFinite(point[key])) {
+            started = false;
+            continue;
+        }
+        if (!started) context.moveTo(x(point.time), y(point[key]));
+        else context.lineTo(x(point.time), y(point[key]));
+        started = true;
+    }
+    context.stroke();
+}
+
+function stopLiveMeasurement(intentional = false) {
+    socketClosingIntentionally = intentional;
+    if (measurementSocket) {
+        measurementSocket.close();
+        measurementSocket = null;
+    }
+    $("stopButton").disabled = true;
+}
+
+async function stopMeasurement() {
+    clearError();
+    $("stopButton").disabled = true;
+    try {
+        const data = await apiRequest("/api/measurement/stop", {method: "POST"});
+        stopLiveMeasurement(true);
+        finishMeasurement(data.status === "aborted" ? "aborted" : "finished");
+    } catch (error) {
+        $("stopButton").disabled = false;
+        showError(error.message);
+    }
+}
+
+function finishMeasurement(status, errorMessage = "") {
+    const configuration = uiState.currentMeasurement;
+    if (!configuration) return;
+    uiState.currentMeasurement = null;
+    uiState.measurementComplete = true;
+    const validErrors = uiState.samples.map(sample => sample.error).filter(Number.isFinite).map(Math.abs);
+    const duration = uiState.lastMeasurement?.elapsed_s
+        ?? ((performance.now() - uiState.measurementStartedAt) / 1000);
+    $("resultVehicle").textContent = uiState.vehicleName;
+    $("resultRun").textContent = uiState.runId || "–";
+    $("resultType").textContent = configuration.title;
+    $("resultParameters").textContent = configuration.resultParameters;
+    $("resultDuration").textContent = fixed(duration) + " s";
+    $("resultSamples").textContent = String(uiState.samples.length);
+    $("resultMeanError").textContent = validErrors.length
+        ? fixed(validErrors.reduce((sum, value) => sum + value, 0) / validErrors.length) + " m"
+        : "Nicht verfügbar";
+    $("resultMaxError").textContent = validErrors.length
+        ? fixed(Math.max(...validErrors)) + " m"
+        : "Nicht verfügbar";
+    $("logFile").textContent = uiState.logFile || "–";
+    $("resultStatus").className = "status-pill " + (status === "finished" ? "success" : status === "aborted" ? "warning" : "error");
+    $("resultStatus").textContent = status === "finished" ? "Abgeschlossen" : status === "aborted" ? "Abgebrochen" : "Fehler";
+    $("resultHeadline").textContent = errorMessage || (status === "aborted" ? "Die Messung wurde durch den Benutzer beendet." : "Die Messung wurde abgeschlossen.");
+    uiState.currentStep = 5;
+    document.querySelectorAll(".workflow-screen").forEach(screen => screen.hidden = true);
+    $("screenResult").hidden = false;
+    updateStepper();
+}
+
+async function disconnectSystem(finishedByUser = false) {
+    clearError();
+    if (uiState.currentMeasurement && !confirm("Die laufende Messung und den TestRun wirklich beenden?")) return;
+    stopLiveMeasurement(true);
+    try {
+        const oldRun = uiState.runId;
+        await apiRequest("/api/disconnect", {method: "POST"});
+        resetWorkflow();
+        showMessage(finishedByUser && oldRun ? "TestRun " + oldRun + " wurde abgeschlossen." : "Testsystem wurde getrennt.");
+    } catch (error) {
+        showError(error.message);
+    }
+}
+
+function resetWorkflow() {
+    Object.assign(uiState, {
+        connected: false, vehicleId: null, vehicleName: "", runId: null, signals: [],
+        quickCheckComplete: false, quickCheckResult: null, precheckComplete: false,
+        precheckSkipped: false, currentStep: 1, measurementComplete: false,
+        currentMeasurement: null, lastMeasurement: null, samples: [], logFile: null,
+        lastConfiguration: null
+    });
+    $("vehicle").disabled = false;
+    $("connectionResult").hidden = true;
+    $("quickCheckResult").hidden = true;
+    $("precheckResult").hidden = true;
+    $("toQuickCheckButton").disabled = true;
+    $("toPrecheckButton").disabled = true;
+    $("toTestsButton").disabled = true;
+    setBusy($("connectButton"), false, "", "Prüfung starten");
+    updateHeader();
+    showStep(1);
+}
+
+async function restoreStatus() {
+    try {
+        const status = await apiRequest("/api/status");
+        if (!status.connected) {
+            resetWorkflow();
+            return;
+        }
+        uiState.connected = true;
+        uiState.vehicleId = Number(status.vehicle_id);
+        $("vehicle").value = String(status.vehicle_id);
+        $("vehicle").disabled = true;
+        uiState.vehicleName = selectedVehicleName();
+        uiState.runId = status.test_run?.run_id || null;
+        uiState.signals = status.signals || [];
+        uiState.quickCheckComplete = Boolean(status.quick_check);
+        uiState.quickCheckResult = status.quick_check || null;
+        uiState.precheckComplete = Boolean(status.precheck?.done);
+        uiState.precheckSkipped = Boolean(status.precheck?.skipped);
+        if (uiState.quickCheckResult) {
+            renderQuickCheck(uiState.quickCheckResult);
+            $("quickCheckButton").textContent = "Quick Check erneut starten";
+        }
+        if (uiState.precheckComplete) {
+            renderPrecheck({
+                ...status.precheck,
+                status: status.precheck.skipped ? "skipped" : "completed"
+            });
+            $("precheckButton").textContent = status.precheck.skipped
+                ? "Precheck nachholen"
+                : "Precheck erneut starten";
+            $("skipPrecheckButton").disabled = true;
+            $("toTestsButton").disabled = false;
+        }
+        $("connectionResult").hidden = false;
+        $("checkRadest").className = "check-row ok";
+        $("checkDiagnosis").className = "check-row ok";
+        $("checkSignals").className = "check-row " + (uiState.signals.includes("distance") ? "ok" : "warning");
+        $("signals").textContent = "Messsignale: " + (uiState.signals.join(", ") || "keine");
+        $("toQuickCheckButton").disabled = false;
+        $("toPrecheckButton").disabled = !uiState.quickCheckComplete;
+        updateHeader();
+        if (status.measurement_running && status.latest_measurement) {
+            const latest = status.latest_measurement;
+            uiState.currentMeasurement = restoredConfiguration(latest);
+            uiState.lastConfiguration = uiState.currentMeasurement;
+            resetMeasurementDisplay(uiState.currentMeasurement);
+            uiState.logFile = status.log_file || null;
+            showMeasurementScreen();
+            updateMeasurement(latest);
+            startLiveMeasurement();
+        } else {
+            showStep(uiState.precheckComplete ? 4 : uiState.quickCheckComplete ? 3 : 2);
+        }
+    } catch (error) {
+        showError("Systemstatus konnte nicht geladen werden: " + error.message);
+    }
+}
+
+function restoredConfiguration(data) {
+    if (data.test_type === "dynamic") {
+        const start = Number(data.scenario_start_distance);
+        const end = Number(data.scenario_end_distance);
+        const velocity = Number(data.scenario_velocity_kmh);
+        return {
+            type: "dynamic", title: "Dynamische Messung",
+            description: fixed(start, 1) + " m → " + fixed(end, 1) + " m | " + fixed(velocity, 1) + " km/h",
+            resultParameters: fixed(start, 1) + " m → " + fixed(end, 1) + " m · " + fixed(velocity, 1) + " km/h",
+            url: "/api/dynamic/start?start_distance_m=" + encodeURIComponent(start)
+                + "&end_distance_m=" + encodeURIComponent(end)
+                + "&velocity_kmh=" + encodeURIComponent(velocity)
+        };
+    }
+    const distance = Number(data.requested_distance);
+    return {
+        type: "static", title: "Statische Messung",
+        description: fixed(distance, 1) + " m konstante Zieldistanz",
+        resultParameters: fixed(distance, 1) + " m",
+        url: "/api/static/start?distance_m=" + encodeURIComponent(distance)
+    };
+}
+
+$("connectButton").addEventListener("click", connectSystem);
+$("toQuickCheckButton").addEventListener("click", () => showStep(2));
+$("quickCheckButton").addEventListener("click", runQuickCheck);
+$("toPrecheckButton").addEventListener("click", () => showStep(3));
+$("precheckButton").addEventListener("click", runPrecheck);
+$("skipPrecheckButton").addEventListener("click", skipPrecheck);
+$("toTestsButton").addEventListener("click", () => showStep(4));
+$("staticButton").addEventListener("click", startStaticMeasurement);
+$("dynamicButton").addEventListener("click", startDynamicMeasurement);
+$("stopButton").addEventListener("click", stopMeasurement);
+$("disconnectButton").addEventListener("click", () => disconnectSystem(false));
+$("repeatButton").addEventListener("click", () => startConfiguredMeasurement(uiState.currentMeasurement || uiState.lastConfiguration));
+$("moreMeasurementButton").addEventListener("click", () => {
+    uiState.measurementComplete = false;
+    showStep(4);
+});
+$("finishRunButton").addEventListener("click", () => disconnectSystem(true));
+document.querySelectorAll("[data-go-step]").forEach(button => {
+    button.addEventListener("click", () => showStep(Number(button.dataset.goStep)));
+});
+document.querySelectorAll(".stepper li").forEach(item => {
+    item.querySelector("button").addEventListener("click", () => showStep(Number(item.dataset.step)));
+});
+window.addEventListener("resize", () => {
+    if (!$("screenMeasurement").hidden) drawChart();
+});
+
+updateHeader();
+restoreStatus();

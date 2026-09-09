@@ -1,11 +1,16 @@
 # Weboberfläche
 
-- `/`: bestehender Prüfablauf; HTML, CSS und JavaScript sind getrennt.
+- `/`: geführter Prüfablauf mit Fahrzeug, Quick Check, Precheck, Messung und
+  Ergebnis; HTML, CSS und JavaScript sind getrennt.
 - `/database`: fahrzeugzentrierte Pflege von Fahrzeugen, Radarsensoren,
   HW-/SW-Kennungen, Referenzwerten und Diagnoseparametern.
 - `/docs`: Swagger UI.
 
 Alle Ressourcen werden lokal geladen; keine CDN- oder Internetabhängigkeit.
+`GET /api/status` liefert den aktuellen Controller-/TestRun-Zustand, damit die
+Prüfoberfläche nach einem Browser-Neuladen wieder an der passenden Stelle
+einsteigen kann. Ergebniskennwerte im Browser werden aus den während der
+aktuellen Messung empfangenen Live-Punkten berechnet.
 Die Anwendung ist für das vertrauenswürdige lokale Prüfnetz gedacht und
 besitzt keine Benutzeranmeldung. Nicht öffentlich ins Internet stellen.
 
