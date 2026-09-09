@@ -126,14 +126,11 @@ function renderVehicleList() {
   });
   $("emptyVehicles").hidden = vehicles.length > 0;
   $("vehicleList").innerHTML = vehicles.map(vehicle => {
-    const sensors = related("ecus", "vehicle_id", vehicle.id);
-    return `<tr class="vehicle-table-row" data-open-vehicle="${vehicle.id}" tabindex="0" role="button">
+    return `<tr class="vehicle-table-row clickable-table-row" data-open-vehicle="${vehicle.id}" tabindex="0" role="button">
       <td><strong>${esc(vehicle.manufacturer || "—")}</strong></td>
       <td>${esc(vehicle.model || "—")}</td>
       <td>${esc(vehicle.generation || "—")}</td>
       <td>${esc(years(vehicle))}</td>
-      <td>${sensors.length}</td>
-      <td><span class="table-open-link">Öffnen →</span></td>
     </tr>`;
   }).join("");
 }

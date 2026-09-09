@@ -126,6 +126,9 @@ function renderResults() {
 
     for (const run of visible) {
         const row = body.insertRow();
+        row.className = "clickable-table-row";
+        row.tabIndex = 0;
+        row.setAttribute("role", "button");
         row.insertCell().textContent = formatDate(run.start_time);
         const vehicleCell = row.insertCell();
         vehicleCell.append(textElement("strong", run.vehicle_name));
@@ -134,12 +137,13 @@ function renderResults() {
         row.insertCell().textContent = String(run.test_count);
         row.insertCell().append(badge(run.quick_check_status));
         row.insertCell().append(badge(run.precheck_status));
-        const actionCell = row.insertCell();
-        const button = textElement("button", "Öffnen", "small-button");
-        button.type = "button";
-        button.addEventListener("click", () => openRun(run.run_id));
-        actionCell.append(button);
-        row.addEventListener("dblclick", () => openRun(run.run_id));
+        row.addEventListener("click", () => openRun(run.run_id));
+        row.addEventListener("keydown", event => {
+            if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                openRun(run.run_id);
+            }
+        });
     }
 
     $("emptyResults").hidden = visible.length > 0;

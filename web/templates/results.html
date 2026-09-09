@@ -31,16 +31,16 @@
         <section id="resultsOverview" class="results-view">
             <div class="page-header">
                 <div><p class="eyebrow">Ergebnisarchiv</p><h1>TestRuns</h1><p>Gespeicherte Prüfläufe durchsuchen und öffnen.</p></div>
-                <button id="reloadResults" class="secondary" type="button">Aktualisieren</button>
             </div>
             <div class="results-filter-bar">
                 <label><span>Suche</span><input id="resultSearch" type="search" placeholder="Fahrzeug oder TestRun-ID"></label>
                 <label><span>Status</span><select id="resultStatusFilter"><option value="">Alle Status</option><option value="finished">Abgeschlossen</option><option value="completed_with_errors">Mit Fehlern</option><option value="aborted">Abgebrochen</option><option value="running">Laufend</option></select></label>
                 <label><span>Prüfart</span><select id="resultTypeFilter"><option value="">Alle Prüfarten</option><option value="static">Statisch</option><option value="dynamic">Dynamisch</option></select></label>
+                <button id="reloadResults" class="secondary" type="button">Aktualisieren</button>
             </div>
             <div class="table-scroll results-table-wrap">
                 <table class="results-table">
-                    <thead><tr><th>Datum</th><th>Fahrzeug</th><th>Status</th><th>Messungen</th><th>Quick Check</th><th>Precheck</th><th></th></tr></thead>
+                    <thead><tr><th>Datum</th><th>Fahrzeug</th><th>Status</th><th>Messungen</th><th>Quick Check</th><th>Precheck</th></tr></thead>
                     <tbody id="resultsTableBody"></tbody>
                 </table>
             </div>
