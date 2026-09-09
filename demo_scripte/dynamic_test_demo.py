@@ -35,10 +35,10 @@ from test_controller import TestController
 # KONFIGURATION
 # ======================================================
 
-VEHICLE_ID = 2
+VEHICLE_ID = 1
 
 NEAR_DISTANCE_M = 5.0
-FAR_DISTANCE_M = 15.0
+FAR_DISTANCE_M = 15
 
 VELOCITIES_KMH = [1.0, 2.0, 3.0, 4.0, 5.0]
 
