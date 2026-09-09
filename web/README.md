@@ -10,7 +10,9 @@ Alle Ressourcen werden lokal geladen; keine CDN- oder Internetabhängigkeit.
 `GET /api/status` liefert den aktuellen Controller-/TestRun-Zustand, damit die
 Prüfoberfläche nach einem Browser-Neuladen wieder an der passenden Stelle
 einsteigen kann. Ergebniskennwerte im Browser werden aus den während der
-aktuellen Messung empfangenen Live-Punkten berechnet.
+aktuellen Messung empfangenen Live-Punkten berechnet. Der vollständige
+Distanzverlauf dieser Punkte bleibt auf dem Ergebnis-Screen sichtbar.
+Prüfablauf und Datenpflege verwenden denselben lokalen App-Header.
 Die Anwendung ist für das vertrauenswürdige lokale Prüfnetz gedacht und
 besitzt keine Benutzeranmeldung. Nicht öffentlich ins Internet stellen.
 

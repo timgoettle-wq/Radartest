@@ -458,17 +458,18 @@ function startLiveMeasurement() {
 }
 
 function fixed(value, digits = 2) {
-    const number = Number(value);
+    const number = numeric(value);
     return Number.isFinite(number) ? number.toFixed(digits) : "–";
 }
 
 function updateMeasurement(data) {
     uiState.lastMeasurement = data;
     uiState.samples.push({
-        time: Number(data.elapsed_s),
-        radest: Number(data.radest_distance),
-        vehicle: Number(data.vehicle?.distance?.value),
-        error: Number(data.distance_error)
+        time: numeric(data.elapsed_s),
+        radest: numeric(data.radest_distance),
+        vehicle: numeric(data.vehicle?.distance?.value),
+        error: numeric(data.distance_error),
+        phase: data.phase || null
     });
     $("requestedDistance").textContent = fixed(data.requested_distance);
     $("radestDistance").textContent = fixed(data.radest_distance);
@@ -481,22 +482,30 @@ function updateMeasurement(data) {
     if (data.test_type === "dynamic") {
         const phaseLabels = {pre_hold: "Startdistanz halten", moving: "Bewegung", post_hold: "Enddistanz halten"};
         $("scenarioPhase").textContent = phaseLabels[data.phase] || data.phase || "–";
-        $("scenarioProgress").textContent = fixed(Number(data.scenario_progress) * 100, 1) + " %";
+        const progress = numeric(data.scenario_progress);
+        $("scenarioProgress").textContent = Number.isFinite(progress) ? fixed(progress * 100, 1) + " %" : "–";
         $("scenarioDuration").textContent = fixed(data.dynamic_total_duration_s);
     }
     drawChart();
 }
 
 function signalText(signal) {
-    return signal && Number.isFinite(Number(signal.value))
+    return signal && Number.isFinite(numeric(signal.value))
         ? fixed(signal.value) + (signal.unit ? " " + signal.unit : "")
         : "–";
 }
 
-function drawChart() {
-    const canvas = $("liveChart");
+function numeric(value) {
+    if (value === null || value === undefined || value === "") return Number.NaN;
+    const number = Number(value);
+    return Number.isFinite(number) ? number : Number.NaN;
+}
+
+function drawChart(canvasId = "liveChart") {
+    const canvas = $(canvasId);
+    if (!canvas) return;
     const width = Math.max(320, canvas.clientWidth || 900);
-    const height = 320;
+    const height = canvasId === "resultChart" ? 360 : 320;
     const ratio = window.devicePixelRatio || 1;
     canvas.width = width * ratio;
     canvas.height = height * ratio;
@@ -530,12 +539,44 @@ function drawChart() {
         context.fillStyle = "#63756d"; context.textAlign = "right";
         context.fillText((maxY - index / 4 * (maxY - minY)).toFixed(1), pad.left - 7, py + 4);
     }
+    drawPhaseMarkers(context, points, x, pad, height);
     drawSeries(context, points, "radest", x, y, "#008143");
     drawSeries(context, points, "vehicle", x, y, "#d58a00");
     context.textAlign = "left"; context.fillStyle = "#008143"; context.fillText("— RadEsT", pad.left, 15);
     context.fillStyle = "#d58a00"; context.fillText("— Fahrzeug", pad.left + 85, 15);
-    context.fillStyle = "#63756d"; context.textAlign = "center";
-    context.fillText((maxX - minX).toFixed(1) + " s", width - pad.right - 18, height - 10);
+    context.fillStyle = "#63756d";
+    context.textAlign = "left"; context.fillText("0 s", pad.left, height - 10);
+    context.textAlign = "right"; context.fillText((maxX - minX).toFixed(1) + " s", width - pad.right, height - 10);
+    context.save();
+    context.translate(13, height / 2);
+    context.rotate(-Math.PI / 2);
+    context.textAlign = "center";
+    context.fillText("Distanz [m]", 0, 0);
+    context.restore();
+}
+
+function drawPhaseMarkers(context, points, x, pad, height) {
+    const labels = {pre_hold: "Halten Start", moving: "Bewegung", post_hold: "Halten Ende"};
+    let previous = null;
+    for (const point of points) {
+        if (!point.phase || point.phase === previous) continue;
+        const px = x(point.time);
+        if (previous !== null) {
+            context.save();
+            context.setLineDash([4, 4]);
+            context.strokeStyle = "#9cb3a8";
+            context.beginPath();
+            context.moveTo(px, pad.top);
+            context.lineTo(px, height - pad.bottom);
+            context.stroke();
+            context.restore();
+        }
+        context.fillStyle = "#63756d";
+        context.font = "11px Arial";
+        context.textAlign = "left";
+        context.fillText(labels[point.phase] || point.phase, Math.min(px + 4, context.canvas.clientWidth - 85), pad.top + 12);
+        previous = point.phase;
+    }
 }
 
 function drawSeries(context, points, key, x, y, color) {
@@ -605,6 +646,7 @@ function finishMeasurement(status, errorMessage = "") {
     document.querySelectorAll(".workflow-screen").forEach(screen => screen.hidden = true);
     $("screenResult").hidden = false;
     updateStepper();
+    requestAnimationFrame(() => drawChart("resultChart"));
 }
 
 async function disconnectSystem(finishedByUser = false) {
@@ -747,6 +789,7 @@ document.querySelectorAll(".stepper li").forEach(item => {
 });
 window.addEventListener("resize", () => {
     if (!$("screenMeasurement").hidden) drawChart();
+    if (!$("screenResult").hidden) drawChart("resultChart");
 });
 
 updateHeader();

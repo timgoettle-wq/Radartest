@@ -8,7 +8,21 @@
 <script src="/static/database.js" defer></script>
 </head>
 <body class="database-page">
-<nav><a href="/">Radartest</a><a class="active" href="/database">Fahrzeuge</a><a href="/docs">API</a><img class="dekra-logo" src="/static/images/dekra-logo.svg" alt="DEKRA"></nav>
+<header class="app-header database-app-header">
+  <div class="header-main">
+    <div class="app-title"><span class="app-mark"></span><strong>Radar Testsystem</strong></div>
+    <div class="database-header-context">Fahrzeug- und Sensordaten verwalten</div>
+    <nav class="utility-nav" aria-label="Anwendungsbereiche">
+      <a href="/">Prüfablauf</a>
+      <a class="active" href="/database">Datenpflege</a>
+      <a href="/docs">API</a>
+    </nav>
+    <img class="dekra-logo" src="/static/images/dekra-logo.svg" alt="DEKRA">
+  </div>
+  <div class="system-strip database-context-strip">
+    <span>Bereich</span><strong>Datenpflege</strong><span>Datenbankverwaltung außerhalb des Prüfworkflows</span>
+  </div>
+</header>
 
 <main>
   <div id="breadcrumbs" class="breadcrumbs">Browse</div>
