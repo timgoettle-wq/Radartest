@@ -81,6 +81,16 @@ table {width:100%;border-collapse:collapse;}th,td {padding:10px;border-bottom:1p
 #editor {display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;}
 #editor label {display:flex;flex-direction:column;gap:5px;}
 .notice {color:var(--text-muted);} .danger {background:#ab3232;}
+nav {
+    display: flex;
+    align-items: center;
+}
+
+.dekra-logo {
+    margin-left: auto;
+    height: 32px;
+    width: auto;
+}
 @media(max-width:600px){body{padding:0 10px;}section{padding:14px;}nav{gap:14px;}}
 
 /* Fahrzeugzentrierte Datenpflege */
