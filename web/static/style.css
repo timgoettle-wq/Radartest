@@ -212,6 +212,7 @@ table {width:100%;border-collapse:collapse;}th,td {padding:10px;border-bottom:1p
 .test-type-card>label,.parameter-grid label {display:flex;flex-direction:column;gap:7px;color:#415d52;font-size:13px;font-weight:700;}
 .test-type-card label>span {font-weight:400;color:var(--text-muted);}
 .parameter-grid {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;min-width:0;}
+.static-parameter-grid {grid-template-columns:1fr;}
 .parameter-grid label {min-width:0;}
 .parameter-grid input {display:block;width:100%;min-width:0;}
 

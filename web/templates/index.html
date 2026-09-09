@@ -19,6 +19,7 @@
                 <span id="headerConnection" class="connection-label"><i></i>Nicht verbunden</span>
             </div>
             <nav class="utility-nav" aria-label="Weitere Bereiche">
+                <a class="active" href="/">Prüfablauf</a>
                 <a href="/results">Ergebnisse</a>
                 <a href="/database">Datenpflege</a>
                 <a href="/docs">API</a>
@@ -108,8 +109,9 @@
             <div class="test-type-grid">
                 <article class="test-type-card">
                     <div><p class="eyebrow">Konstantes Ziel</p><h2>Statische Messung</h2><p>Definiertes Radarziel bei konstanter Distanz.</p></div>
-                    <label for="distanceInput">Distanz <span>m</span></label>
-                    <input id="distanceInput" type="number" value="7.0" step="0.1" min="0.1">
+                    <div class="parameter-grid static-parameter-grid">
+                        <label for="distanceInput">Distanz <span>m</span><input id="distanceInput" type="number" value="7.0" step="0.1" min="0.1"></label>
+                    </div>
                     <button id="staticButton" class="primary" type="button">Statische Messung starten</button>
                 </article>
                 <article class="test-type-card">
