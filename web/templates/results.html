@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Radar Testsystem · Ergebnisse</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="/static/results.js" defer></script>
+</head>
+<body class="results-page">
+    <header class="app-header">
+        <div class="header-main">
+            <div class="app-title"><span class="app-mark"></span><strong>Radar Testsystem</strong></div>
+            <div class="results-header-context">Prüfergebnisse und Rohdaten</div>
+            <nav class="utility-nav" aria-label="Anwendungsbereiche">
+                <a href="/">Prüfablauf</a>
+                <a href="/results" class="active">Ergebnisse</a>
+                <a href="/database">Datenpflege</a>
+                <a href="/docs">API</a>
+            </nav>
+            <img class="dekra-logo" src="/static/images/dekra-logo.svg" alt="DEKRA">
+        </div>
+        <div class="system-strip results-context-strip">
+            <span>Bereich</span><strong>Ergebnisarchiv</strong><span>Unveränderte TestRun- und CSV-Dateien</span>
+        </div>
+    </header>
+
+    <main class="results-shell">
+        <p id="resultsMessage" class="status-message" role="status"></p>
+
+        <section id="resultsOverview" class="results-view">
+            <div class="page-header">
+                <div><p class="eyebrow">Ergebnisarchiv</p><h1>TestRuns</h1><p>Gespeicherte Prüfläufe durchsuchen und öffnen.</p></div>
+                <button id="reloadResults" class="secondary" type="button">Aktualisieren</button>
+            </div>
+            <div class="results-filter-bar">
+                <label><span>Suche</span><input id="resultSearch" type="search" placeholder="Fahrzeug oder TestRun-ID"></label>
+                <label><span>Status</span><select id="resultStatusFilter"><option value="">Alle Status</option><option value="finished">Abgeschlossen</option><option value="completed_with_errors">Mit Fehlern</option><option value="aborted">Abgebrochen</option><option value="running">Laufend</option></select></label>
+                <label><span>Prüfart</span><select id="resultTypeFilter"><option value="">Alle Prüfarten</option><option value="static">Statisch</option><option value="dynamic">Dynamisch</option></select></label>
+            </div>
+            <div class="table-scroll results-table-wrap">
+                <table class="results-table">
+                    <thead><tr><th>Datum</th><th>Fahrzeug</th><th>Status</th><th>Messungen</th><th>Quick Check</th><th>Precheck</th><th></th></tr></thead>
+                    <tbody id="resultsTableBody"></tbody>
+                </table>
+            </div>
+            <p id="emptyResults" class="empty-state" hidden>Keine passenden TestRuns gefunden.</p>
+        </section>
+
+        <section id="runDetail" class="results-view" hidden>
+            <button id="backToResults" class="breadcrumb-button" type="button">← Alle TestRuns</button>
+            <div class="page-header">
+                <div><p class="eyebrow">TestRun</p><h1 id="runDetailTitle">–</h1><p id="runDetailSubtitle">–</p></div>
+                <a id="downloadRun" class="button-link secondary" href="#">run.json herunterladen</a>
+            </div>
+            <div id="runFacts" class="result-context result-run-facts"></div>
+            <div class="run-check-grid">
+                <article class="archive-card"><div class="section-title"><h2>Quick Check</h2><span id="archiveQuickStatus" class="status-pill">–</span></div><div id="archiveQuickContent"></div></article>
+                <article class="archive-card"><div class="section-title"><h2>RadEsT-Precheck</h2><span id="archivePrecheckStatus" class="status-pill">–</span></div><div id="archivePrecheckContent"></div></article>
+            </div>
+            <article class="archive-card measurements-card">
+                <div class="section-title"><h2>Messungen</h2><span id="measurementCount">0</span></div>
+                <div class="table-scroll"><table class="results-table"><thead><tr><th>Prüfung</th><th>Parameter</th><th>Status</th><th>Start</th><th>Messpunkte</th><th></th></tr></thead><tbody id="measurementsTableBody"></tbody></table></div>
+                <p id="emptyMeasurements" class="empty-state" hidden>Dieser TestRun enthält keine Messungen.</p>
+            </article>
+        </section>
+
+        <section id="measurementDetail" class="results-view" hidden>
+            <button id="backToRun" class="breadcrumb-button" type="button">← Zurück zum TestRun</button>
+            <div class="page-header">
+                <div><p class="eyebrow">Messungsdetail</p><h1 id="archiveMeasurementTitle">–</h1><p id="archiveMeasurementSubtitle">–</p></div>
+                <a id="downloadCsv" class="button-link primary" href="#">CSV herunterladen</a>
+            </div>
+            <div class="metric-grid archive-metrics">
+                <div class="metric-card"><span>Messdauer</span><strong id="archiveDuration">–</strong></div>
+                <div class="metric-card"><span>Messpunkte</span><strong id="archiveSamples">–</strong></div>
+                <div class="metric-card"><span>Gültige Abstandswerte</span><strong id="archiveValidSamples">–</strong></div>
+                <div class="metric-card"><span>Dropouts</span><strong id="archiveDropouts">–</strong></div>
+                <div class="metric-card"><span>Mittlere abs. Abweichung</span><strong id="archiveMeanError">–</strong></div>
+                <div class="metric-card"><span>Maximale abs. Abweichung</span><strong id="archiveMaxError">–</strong></div>
+            </div>
+            <article class="archive-card archive-chart-card">
+                <div class="section-title"><h2>Distanzverlauf</h2><span>RadEsT / Fahrzeug</span></div>
+                <canvas id="archiveChart" width="1100" height="420" aria-label="Distanzverlauf aus der Messdatei"></canvas>
+            </article>
+            <div id="measurementMetadata" class="result-context archive-metadata"></div>
+        </section>
+    </main>
+</body>
+</html>

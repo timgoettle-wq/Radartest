@@ -16,6 +16,7 @@ from fastapi.responses import HTMLResponse
 
 from database.database import get_vehicles
 from test_controller import TestController
+from web.results_api import router as results_router
 
 
 app = FastAPI(
@@ -35,11 +36,17 @@ app.mount("/static", StaticFiles(directory=WEB_DIR / "static"), name="static")
 app.include_router(make_database_router(
     controller_lock, lambda: controller is not None
 ))
+app.include_router(results_router)
 
 
 @app.get("/database", response_class=HTMLResponse)
 def database_page():
     return (WEB_DIR / "templates" / "database.html").read_text(encoding="utf-8")
+
+
+@app.get("/results", response_class=HTMLResponse)
+def results_page():
+    return (WEB_DIR / "templates" / "results.html").read_text(encoding="utf-8")
 
 
 def serialized_controller_access(function):

@@ -2,6 +2,8 @@
 
 - `/`: geführter Prüfablauf mit Fahrzeug, Quick Check, Precheck, Messung und
   Ergebnis; HTML, CSS und JavaScript sind getrennt.
+- `/results`: read-only Ergebnisarchiv mit TestRun-Übersicht,
+  Messungsdetails, CSV-Diagramm und Downloads der Rohdateien.
 - `/database`: fahrzeugzentrierte Pflege von Fahrzeugen, Radarsensoren,
   HW-/SW-Kennungen, Referenzwerten und Diagnoseparametern.
 - `/docs`: Swagger UI.
@@ -12,7 +14,9 @@ Prüfoberfläche nach einem Browser-Neuladen wieder an der passenden Stelle
 einsteigen kann. Ergebniskennwerte im Browser werden aus den während der
 aktuellen Messung empfangenen Live-Punkten berechnet. Der vollständige
 Distanzverlauf dieser Punkte bleibt auf dem Ergebnis-Screen sichtbar.
-Prüfablauf und Datenpflege verwenden denselben lokalen App-Header.
+Prüfablauf, Ergebnisarchiv und Datenpflege verwenden denselben lokalen App-Header.
+Das Ergebnisarchiv liest direkt aus `test_runs/*/run.json` und den dort
+referenzierten CSV-Dateien. Es verändert keine Prüfergebnisse.
 Die Anwendung ist für das vertrauenswürdige lokale Prüfnetz gedacht und
 besitzt keine Benutzeranmeldung. Nicht öffentlich ins Internet stellen.
 
