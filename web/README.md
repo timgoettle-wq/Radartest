@@ -17,6 +17,8 @@ dem geöffneten Fahrzeug, Sensor oder Diagnoseparameter zu.
 
 Hexwerte mit `0x` eingeben; ohne Präfix werden Zahlen dezimal interpretiert.
 CAN-IDs sind aktuell auf Standard-11-Bit-IDs beschränkt.
+Signalfelder verwenden die fest definierten Namen `status`, `distance`,
+`angle`, `relative_speed` und `relative_acceleration`.
 `required` kennzeichnet einen Identifikationsparameter, erzwingt aber
 noch keinen Abbruch des Prüfablaufs.
 

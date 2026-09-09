@@ -37,6 +37,14 @@ const EDITORS = {
   dtc:{table:"dtc_config", title:"DTC-Abfrage", context:"Diagnose"}
 };
 
+const SIGNAL_LABELS = {
+  status:"Status",
+  distance:"Abstand",
+  angle:"Winkel",
+  relative_speed:"Relativgeschwindigkeit",
+  relative_acceleration:"Relativbeschleunigung"
+};
+
 async function request(url, options) {
   const response = await fetch(url, options);
   const data = await response.json();
@@ -226,7 +234,10 @@ function openEditor(kind, row=null, fixed={}) {
     const relationChoices = column.name === "ecu_id"
       ? related("ecus", "vehicle_id", selectedVehicleId).map(sensor => [sensor.id, sensor.name])
       : null;
-    const choices = info.boolean ? [[1,"Ja"],[0,"Nein"]] : info.choices || relationChoices || (column.name === "data_type" ? state.data_types.map(value => [value,value]) : null);
+    const signalChoices = kind === "field" && column.name === "name"
+      ? state.signal_names.map(value => [value, `${SIGNAL_LABELS[value]} (${value})`])
+      : null;
+    const choices = info.boolean ? [[1,"Ja"],[0,"Nein"]] : info.choices || relationChoices || signalChoices || (column.name === "data_type" ? state.data_types.map(value => [value,value]) : null);
     if (choices) {
       input = document.createElement("select");
       if (!column.notnull) input.add(new Option("Nicht angegeben", ""));

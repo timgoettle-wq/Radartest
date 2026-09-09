@@ -49,11 +49,22 @@ class DatabaseEditorTests(unittest.TestCase):
 
     def test_constraints(self):
         data = self.client.get("/api/database").json()
+        self.assertEqual(
+            set(data["signal_names"]),
+            {"status", "distance", "angle", "relative_speed", "relative_acceleration"}
+        )
         ecu = data["tables"]["ecus"]["rows"][0]
         self.assertEqual(self.client.delete("/api/database/vehicles/" + str(ecu["vehicle_id"])).status_code, 422)
         payload = {key: value for key, value in ecu.items() if key != "id"}
         payload["request_id"] = "0xFFFF"
         self.assertEqual(self.client.put("/api/database/ecus/" + str(ecu["id"]), json=payload).status_code, 422)
+        signal = data["tables"]["signal_fields"]["rows"][0]
+        payload = {key: value for key, value in signal.items() if key != "id"}
+        payload["name"] = "beliebiger_freitext"
+        self.assertEqual(
+            self.client.put("/api/database/signal_fields/" + str(signal["id"]), json=payload).status_code,
+            422,
+        )
         self.assertEqual(self.client.post("/api/database/sqlite_sequence", json={}).status_code, 404)
 
 

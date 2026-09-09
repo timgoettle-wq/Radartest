@@ -20,6 +20,13 @@ TYPES = {"uint8": 1, "int8": 1, "uint16_be": 2, "uint16_le": 2,
          "ascii": None, "hex": None, "version_triplet": 3}
 HEX_FIELDS = {"did", "service", "request_id", "response_id", "subfunction",
               "status_mask", "tx_padding"}
+SIGNAL_NAMES = {
+    "status",
+    "distance",
+    "angle",
+    "relative_speed",
+    "relative_acceleration",
+}
 
 
 def columns(connection, table):
@@ -78,6 +85,8 @@ def validate(connection, table, payload):
         raise ValueError("Aktuell werden CAN und ISO-TP unterstützt")
     if table == "identification_parameters" and result["service"] != 34:
         raise ValueError("Identifikation unterstützt nur ReadDataByIdentifier (0x22)")
+    if table == "signal_fields" and result["name"] not in SIGNAL_NAMES:
+        raise ValueError("Unbekannter standardisierter Signalname")
     return result
 
 
@@ -104,6 +113,7 @@ def make_database_router(lock, connected):
                 } for name, (label, foreign_keys) in TABLES.items()},
                 "hex_fields": sorted(HEX_FIELDS),
                 "data_types": list(TYPES),
+                "signal_names": sorted(SIGNAL_NAMES),
             }
 
     def write(table, payload=None, row_id=None, delete=False):
