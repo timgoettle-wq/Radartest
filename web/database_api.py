@@ -126,19 +126,21 @@ def make_database_router(lock, connected):
                                 ).fetchone():
                                     raise ValueError(f"Zuerst abhängige Einträge in {TABLES[child][0]} entfernen.")
                     backup(connection)
+                    saved_id = row_id
                     with connection:
                         if delete:
                             connection.execute(f"DELETE FROM {table} WHERE id = ?", (row_id,))
                         elif row_id is None:
                             keys = list(values)
-                            connection.execute(
+                            cursor = connection.execute(
                                 f"INSERT INTO {table} ({','.join(keys)}) VALUES ({','.join('?' for _ in keys)})",
                                 list(values.values()))
+                            saved_id = cursor.lastrowid
                         else:
                             connection.execute(
                                 f"UPDATE {table} SET {','.join(key + ' = ?' for key in values)} WHERE id = ?",
                                 [*values.values(), row_id])
-                    return {"ok": True}
+                    return {"ok": True, "id": saved_id}
                 except (ValueError, TypeError, sqlite3.IntegrityError) as error:
                     raise HTTPException(422, str(error)) from error
 

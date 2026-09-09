@@ -1,7 +1,8 @@
 # Weboberfläche
 
 - `/`: bestehender Prüfablauf; HTML, CSS und JavaScript sind getrennt.
-- `/database`: Pflege der sieben Konfigurationstabellen.
+- `/database`: fahrzeugzentrierte Pflege von Fahrzeugen, Radarsensoren,
+  HW-/SW-Kennungen, Referenzwerten und Diagnoseparametern.
 - `/docs`: Swagger UI.
 
 Alle Ressourcen werden lokal geladen; keine CDN- oder Internetabhängigkeit.
@@ -11,8 +12,8 @@ besitzt keine Benutzeranmeldung. Nicht öffentlich ins Internet stellen.
 Vor Änderungen das Testsystem über die Testseite trennen.
 Der Editor sperrt Schreibzugriffe bei vorhandenem Controller.
 Beim erneuten Verbinden wird die Diagnosekonfiguration neu geladen.
-IDs sind unveränderlich. Kopieren kopiert nur den ausgewählten Datensatz,
-nicht dessen untergeordnete Konfigurationen.
+Interne IDs sind unveränderlich. Die Oberfläche ordnet Einträge automatisch
+dem geöffneten Fahrzeug, Sensor oder Diagnoseparameter zu.
 
 Hexwerte mit `0x` eingeben; ohne Präfix werden Zahlen dezimal interpretiert.
 CAN-IDs sind aktuell auf Standard-11-Bit-IDs beschränkt.

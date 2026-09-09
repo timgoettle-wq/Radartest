@@ -1,28 +1,54 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Radartest · Datenpflege</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Radartest · Fahrzeugverwaltung</title>
 <link rel="stylesheet" href="/static/style.css">
 <script src="/static/database.js" defer></script>
 </head>
-<body>
-<nav><a href="/">Radartest</a><a href="/database">Datenpflege</a><a href="/docs">API</a></nav>
-<h1>Fahrzeugdaten pflegen</h1>
-<p class="notice">Konfiguration und Referenzwerte. Beobachtete Referenzen sind kein Nachweis einer Herstellerfreigabe.</p>
-<section>
-<label for="table">Bereich</label><select id="table"></select>
-<button id="new">Neuer Eintrag</button><button id="reload">Aktualisieren</button>
-<p id="message" role="status"></p>
-<div class="table-scroll"><table id="rows"></table></div>
-</section>
-<section id="editSection" hidden>
-<h2 id="editTitle">Eintrag bearbeiten</h2>
-<p class="notice">Hexwerte mit 0x eingeben. Byte-Offsets zählen ab Beginn der vollständigen UDS-Antwort; bei DID-Antworten beginnt die Nutzlast meist bei Byte 3.</p>
-<form id="form">
-<div id="editor"></div>
-<button type="submit">Speichern</button><button id="cancel" type="button">Abbrechen</button>
-</form>
-</section>
-<p class="notice">Vor jeder Änderung wird eine Sicherung unter database/backups angelegt. Abhängige Einträge müssen vor dem übergeordneten Eintrag entfernt werden. IDs werden automatisch vergeben und nicht umnummeriert.</p>
-</body></html>
+<body class="database-page">
+<nav><a href="/">Radartest</a><a class="active" href="/database">Fahrzeuge</a><a href="/docs">API</a></nav>
+
+<main>
+  <div id="breadcrumbs" class="breadcrumbs">Browse</div>
+  <header class="page-header">
+    <div><p class="eyebrow">Datenpflege</p><h1 id="pageTitle">Fahrzeuge</h1><p id="pageSubtitle">Fahrzeuge und ihre Radarsensoren verwalten</p></div>
+    <button id="primaryAction" class="primary">+ Fahrzeug anlegen</button>
+  </header>
+
+  <p id="message" class="status-message" role="status"></p>
+
+  <section id="vehicleOverview" class="workspace">
+    <div class="filter-bar">
+      <label class="search-field"><span>Suche</span><input id="search" type="search" placeholder="Hersteller, Modell oder Baureihe"></label>
+      <label><span>Hersteller</span><select id="manufacturerFilter"><option value="">Alle Hersteller</option></select></label>
+      <label><span>Modelljahr</span><input id="yearFilter" type="number" min="1900" max="2200" placeholder="z. B. 2022"></label>
+      <button id="reload" class="secondary">Aktualisieren</button>
+    </div>
+    <div id="vehicleList" class="vehicle-grid"></div>
+    <p id="emptyVehicles" class="empty-state" hidden>Keine passenden Fahrzeuge gefunden.</p>
+  </section>
+
+  <section id="vehicleDetail" class="workspace" hidden>
+    <div class="tabs" role="tablist">
+      <button data-tab="vehicle" class="tab active" role="tab">Fahrzeug</button>
+      <button data-tab="sensors" class="tab" role="tab">Radarsensoren</button>
+      <button data-tab="diagnosis" class="tab" role="tab">Diagnose</button>
+    </div>
+    <div id="detailContent"></div>
+  </section>
+</main>
+
+<dialog id="editorDialog">
+  <form id="editorForm" method="dialog">
+    <div class="dialog-header"><div><p class="eyebrow" id="dialogContext"></p><h2 id="dialogTitle"></h2></div><button id="closeDialog" type="button" class="icon-button" aria-label="Schließen">×</button></div>
+    <div id="editor" class="form-grid"></div>
+    <p class="form-hint">Hexwerte bitte mit <code>0x</code> eingeben.</p>
+    <div class="dialog-actions"><button id="cancelDialog" type="button" class="secondary">Abbrechen</button><button type="submit" class="primary">Speichern</button></div>
+  </form>
+</dialog>
+
+<footer>Vor jeder Änderung wird automatisch eine Datenbanksicherung erstellt. Zum Bearbeiten muss das Testsystem getrennt sein.</footer>
+</body>
+</html>

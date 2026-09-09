@@ -73,3 +73,87 @@ table {width:100%;border-collapse:collapse;}th,td {padding:10px;border-bottom:1p
 .notice {color:#53647a;} .danger {background:#ab3232;}
 @media(max-width:600px){body{padding:0 10px;}section{padding:14px;}nav{gap:14px;}}
 
+/* Fahrzeugzentrierte Datenpflege */
+.database-page {background:#f3f6fb;color:#17243b;max-width:1280px;margin:0 auto;padding:24px;font-family:Inter,Arial,sans-serif;}
+.database-page main {max-width:1180px;margin:0 auto;}
+.database-page nav {max-width:1132px;margin:0 auto 26px;align-items:center;}
+.database-page nav .active {color:#8fc2ff;}
+.breadcrumbs {display:flex;align-items:center;gap:8px;min-height:26px;color:#66758a;font-size:14px;margin:0 0 14px;}
+.breadcrumb-link {background:none;color:#175dcc;padding:0;margin:0;font-size:14px;}
+.page-header {display:flex;justify-content:space-between;align-items:flex-end;gap:24px;margin-bottom:18px;}
+.page-header h1 {font-size:32px;margin:2px 0 7px;}
+.page-header p {margin:0;color:#66758a;}
+.eyebrow {color:#175dcc!important;text-transform:uppercase;letter-spacing:.09em;font-size:12px;font-weight:750;margin:0 0 5px!important;}
+.workspace {margin:0;padding:26px;border:1px solid #dce4ef;box-shadow:0 8px 30px rgba(19,38,65,.06);}
+.status-message {min-height:20px;margin:0 0 12px;color:#52657c;font-size:14px;}
+.status-message.error {color:#a32929;font-weight:650;}
+.filter-bar {display:grid;grid-template-columns:minmax(260px,2fr) minmax(170px,1fr) minmax(150px,.7fr) auto;gap:14px;align-items:end;margin-bottom:24px;}
+.filter-bar label,.form-grid label {display:flex;flex-direction:column;gap:7px;color:#506178;font-size:13px;font-weight:650;}
+.filter-bar input,.filter-bar select,.form-grid input,.form-grid select,.form-grid textarea {width:100%;margin:0;padding:10px 12px;border:1px solid #cbd6e3;border-radius:8px;font:inherit;color:#17243b;}
+.filter-bar input:focus,.filter-bar select:focus,.form-grid input:focus,.form-grid select:focus,.form-grid textarea:focus {outline:3px solid rgba(23,93,204,.13);border-color:#175dcc;}
+button.primary,.database-page button.secondary,.database-page button.danger {padding:10px 15px;margin:0;font-weight:650;}
+.database-page button.secondary {background:#e8eef7;color:#23405f;}
+.database-page button.danger {background:#a82f35;color:white;}
+.vehicle-grid {display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;}
+.vehicle-card {border:1px solid #dce4ef;border-radius:12px;padding:20px;background:#fff;cursor:pointer;transition:transform .15s,border-color .15s,box-shadow .15s;}
+.vehicle-card:hover,.vehicle-card:focus {transform:translateY(-2px);border-color:#8bb4ed;box-shadow:0 10px 24px rgba(19,38,65,.1);outline:none;}
+.vehicle-card h2 {font-size:22px;margin:5px 0 2px;}
+.card-kicker {font-size:13px;color:#175dcc;font-weight:750;text-transform:uppercase;letter-spacing:.06em;}
+.vehicle-generation {margin:0;color:#53647a;min-height:22px;}
+.card-meta {display:flex;flex-wrap:wrap;gap:7px;margin:22px 0;color:#516276;font-size:13px;}
+.card-meta span {background:#eff3f8;border-radius:999px;padding:6px 9px;}
+.card-link {color:#175dcc;font-weight:700;font-size:14px;}
+.empty-state {text-align:center;padding:42px 20px;color:#617187;}
+.tabs {display:flex;gap:4px;border-bottom:1px solid #dce4ef;margin:-8px 0 26px;}
+.tab {background:transparent;color:#5c6c81;border-radius:0;padding:13px 17px;margin:0 0 -1px;border-bottom:3px solid transparent;font-weight:700;}
+.tab.active {color:#175dcc;border-bottom-color:#175dcc;}
+.section-heading,.entity-header,.nested-main,.list-row,.reference-row,.danger-zone {display:flex;align-items:center;justify-content:space-between;gap:18px;}
+.section-heading {margin-bottom:18px;}
+.section-heading h2,.section-heading h3,.entity-header h2 {margin:0 0 4px;}
+.section-heading p,.entity-header p,.danger-zone p {margin:0;color:#65758a;}
+.facts-grid,.compact-facts {display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;}
+.fact {background:#f5f8fc;border:1px solid #e2e8f0;border-radius:10px;padding:15px;display:flex;flex-direction:column;gap:5px;}
+.fact span,.description-box>span {color:#6a788b;font-size:12px;text-transform:uppercase;letter-spacing:.045em;font-weight:700;}
+.fact strong {overflow-wrap:anywhere;}
+.description-box {margin-top:14px;border:1px solid #e2e8f0;border-radius:10px;padding:16px;}
+.description-box p {margin:7px 0 0;white-space:pre-wrap;}
+.danger-zone {border-top:1px solid #e4e9f0;margin-top:26px;padding-top:20px;}
+.entity-card {border:1px solid #dce4ef;border-radius:13px;padding:20px;margin-top:16px;background:#fff;}
+.entity-header {align-items:flex-start;margin-bottom:18px;}
+.entity-header h2 {font-size:21px;}
+.button-row {display:flex;flex-wrap:wrap;gap:7px;justify-content:flex-end;}
+.subsection {border-top:1px solid #e3e9f1;margin-top:20px;padding-top:20px;}
+.nested-card {background:#f7f9fc;border:1px solid #e0e7f0;border-radius:10px;padding:14px;margin-top:10px;}
+.nested-main span,.list-row span,.reference-row span {display:block;color:#68788d;font-size:13px;margin-top:4px;}
+.reference-list,.signal-list {border-top:1px solid #e1e7ef;margin:12px 0 10px;padding-top:5px;}
+.reference-row,.list-row {padding:8px 2px;border-bottom:1px solid #e5eaf1;}
+.reference-row:last-child,.list-row:last-child {border-bottom:0;}
+.link-button,.small-button {background:transparent;color:#175dcc;padding:4px;margin:0;font-size:13px;font-weight:700;}
+.small-button {border:1px solid #b9cae0;padding:6px 9px;background:white;}
+.danger-text {color:#a32c32;}
+.danger.ghost {background:#fff;color:#a32c32;border:1px solid #d7aeb0;}
+.empty-inline,.muted {color:#728095;font-size:14px;}
+.compact-facts .fact {padding:11px 13px;}
+.database-page dialog {width:min(760px,calc(100vw - 32px));max-height:calc(100vh - 40px);overflow:auto;border:0;border-radius:15px;padding:0;box-shadow:0 25px 80px rgba(14,28,49,.3);}
+.database-page dialog::backdrop {background:rgba(15,28,47,.55);backdrop-filter:blur(2px);}
+#editorForm {padding:24px;}
+.dialog-header {display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px;}
+.dialog-header h2 {margin:0;}
+.icon-button {background:transparent;color:#53647a;font-size:28px;padding:0 6px;margin:0;line-height:1;}
+.form-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;}
+.form-grid .wide {grid-column:1/-1;}
+.form-grid textarea {resize:vertical;}
+.form-hint {font-size:13px;color:#69798e;}
+.dialog-actions {display:flex;justify-content:flex-end;gap:9px;border-top:1px solid #e2e8f0;padding-top:17px;margin-top:20px;}
+.database-page footer {max-width:1180px;margin:20px auto;color:#728095;font-size:13px;text-align:center;}
+
+@media(max-width:760px){
+  .database-page {padding:12px;}
+  .page-header {align-items:flex-start;flex-direction:column;}
+  .filter-bar {grid-template-columns:1fr;}
+  .form-grid {grid-template-columns:1fr;}
+  .form-grid .wide {grid-column:auto;}
+  .section-heading,.entity-header,.nested-main,.danger-zone {align-items:flex-start;flex-direction:column;}
+  .button-row {justify-content:flex-start;}
+  .tabs {overflow-x:auto;}
+}

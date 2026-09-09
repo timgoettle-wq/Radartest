@@ -33,8 +33,11 @@ class DatabaseEditorTests(unittest.TestCase):
         self.assertEqual(len(data["tables"]), 7)
         payload = dict(manufacturer="Test", model="Test", generation=None,
                        year_from=2020, year_to=None, description=None)
-        self.assertEqual(self.client.post("/api/database/vehicles", json=payload).status_code, 200)
+        created = self.client.post("/api/database/vehicles", json=payload)
+        self.assertEqual(created.status_code, 200)
+        self.assertIsInstance(created.json()["id"], int)
         row = self.client.get("/api/database").json()["tables"]["vehicles"]["rows"][-1]
+        self.assertEqual(created.json()["id"], row["id"])
         self.assertTrue(list((database.DB_PATH.parent / "backups").glob("*.db")))
         payload["model"] = "Updated"
         url = "/api/database/vehicles/" + str(row["id"])
