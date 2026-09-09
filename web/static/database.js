@@ -106,7 +106,7 @@ function render() {
 }
 
 function renderOverview() {
-  $("breadcrumbs").textContent = "Browse";
+  $("breadcrumbs").textContent = "";
   $("pageTitle").textContent = "Fahrzeuge";
   $("pageSubtitle").textContent = `${rows("vehicles").length} Fahrzeuge in der Datenbank`;
   $("primaryAction").textContent = "+ Fahrzeug anlegen";
