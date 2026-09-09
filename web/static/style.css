@@ -87,9 +87,11 @@ nav {
 }
 
 .dekra-logo {
+    display: block;
     margin-left: auto;
     height: 32px;
     width: auto;
+    filter: brightness(0) invert(1);
 }
 @media(max-width:600px){body{padding:0 10px;}section{padding:14px;}nav{gap:14px;}}
 
