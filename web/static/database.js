@@ -156,7 +156,7 @@ function renderVehicleList() {
 
 function renderDetail() {
   const vehicle = find("vehicles", selectedVehicleId);
-  $("breadcrumbs").innerHTML = `<button class="breadcrumb-link" data-action="back">Datenpflege</button><span>›</span><span>${esc(vehicle.manufacturer)}</span><span>›</span><strong>${esc([vehicle.model, vehicle.generation].filter(Boolean).join(" "))}</strong>`;
+  $("breadcrumbs").innerHTML = `<button class="breadcrumb-link" data-action="back">Datenpflege</button><span>›</span><strong>${esc(vehicleName(vehicle))}</strong>`;
   $("pageTitle").textContent = vehicleName(vehicle);
   $("pageSubtitle").textContent = `${related("ecus", "vehicle_id", vehicle.id).length} zugeordnete Radarsensoren · interne Vehicle-ID ${vehicle.id}`;
   $("primaryAction").textContent = activeTab === "sensors" ? "+ Sensor hinzufügen" : activeTab === "diagnosis" ? "+ Diagnoseparameter" : "Fahrzeug bearbeiten";
