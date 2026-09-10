@@ -676,3 +676,21 @@ button.primary,.database-page button.secondary,.database-page button.danger,.res
         border-right:0;border-bottom:1px solid #c8ddd2;
     }
 }
+
+
+/* Einheitliche Breadcrumb-Navigation in Datenpflege und Ergebnisdetails. */
+.database-page .breadcrumbs,.results-page .breadcrumbs {
+    display:flex;align-items:center;flex-wrap:wrap;gap:8px;
+    min-height:26px;margin:0;color:var(--text-muted);font-size:14px;
+}
+.database-page .breadcrumb-link,.results-page .breadcrumb-link {
+    margin:0;padding:2px 0;background:transparent;color:var(--green-primary);
+    border-radius:0;font-size:14px;font-weight:600;
+}
+.database-page .breadcrumb-link:hover,.results-page .breadcrumb-link:hover {
+    color:var(--green-dark);text-decoration:underline;text-underline-offset:3px;
+}
+.database-page .breadcrumbs > span,.results-page .breadcrumbs > span {color:#8da198;}
+.database-page .breadcrumbs > strong,.results-page .breadcrumbs > strong {
+    color:var(--text-primary);font-weight:700;
+}
