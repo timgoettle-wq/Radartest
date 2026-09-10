@@ -49,7 +49,11 @@
         </section>
 
         <section id="runDetail" class="results-view" hidden>
-            <button id="backToResults" class="breadcrumb-button" type="button">← Alle TestRuns</button>
+            <nav class="breadcrumbs detail-breadcrumbs" aria-label="Ergebnisnavigation">
+                <button id="backToResults" class="breadcrumb-link" type="button">Ergebnisse</button>
+                <span>›</span>
+                <strong id="runBreadcrumb">TestRun</strong>
+            </nav>
             <div class="page-header">
                 <div><p class="eyebrow">TestRun</p><h1 id="runDetailTitle">–</h1><p id="runDetailSubtitle">–</p></div>
                 <a id="downloadRun" class="button-link secondary" href="#">run.json herunterladen</a>
@@ -67,7 +71,13 @@
         </section>
 
         <section id="measurementDetail" class="results-view" hidden>
-            <button id="backToRun" class="breadcrumb-button" type="button">← Zurück zum TestRun</button>
+            <nav class="breadcrumbs detail-breadcrumbs" aria-label="Ergebnisnavigation">
+                <button id="backToResultsFromMeasurement" class="breadcrumb-link" type="button">Ergebnisse</button>
+                <span>›</span>
+                <button id="backToRun" class="breadcrumb-link" type="button">TestRun</button>
+                <span>›</span>
+                <strong id="measurementBreadcrumb">Messung</strong>
+            </nav>
             <div class="page-header">
                 <div><p class="eyebrow">Messungsdetail</p><h1 id="archiveMeasurementTitle">–</h1><p id="archiveMeasurementSubtitle">–</p></div>
                 <a id="downloadCsv" class="button-link primary" href="#">CSV herunterladen</a>
