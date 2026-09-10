@@ -107,7 +107,7 @@ table {width:100%;border-collapse:collapse;}th,td {padding:10px;border-bottom:1p
     min-height: 68px;
     padding: 0 30px;
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-columns: auto minmax(0, 1fr);
     align-items: center;
     gap: 25px;
 }
@@ -264,7 +264,7 @@ table {width:100%;border-collapse:collapse;}th,td {padding:10px;border-bottom:1p
 .empty-inline {color:var(--text-muted);}
 
 @media(max-width:900px){
-    .header-main {grid-template-columns:auto 1fr auto;gap:15px;}
+    .header-main {grid-template-columns:auto 1fr;gap:15px;}
     .session-summary {grid-column:1/-1;grid-row:2;justify-self:start;padding-bottom:12px;}
     .utility-nav {justify-self:end;}
     .result-columns,.measurement-layout {grid-template-columns:1fr;}
@@ -716,4 +716,15 @@ button.primary,.database-page button.secondary,.database-page button.danger,.res
     border:0;
     border-radius:0;
     box-shadow:none;
+}
+
+
+/* DEKRA als alleinige Marke links in der Kopfzeile. */
+.app-header .app-title .dekra-logo {
+    display:block;
+    width:auto;
+    height:42px;
+}
+@media(max-width:650px) {
+    .app-header .app-title .dekra-logo {height:34px;}
 }
