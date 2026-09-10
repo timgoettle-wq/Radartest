@@ -17,7 +17,7 @@ from radest.device import RadestDevice
 
 
 RADEST_IP = "192.168.0.10"
-RADEST_PORT = 5000
+RADEST_PORT = 2101
 
 
 def main():
