@@ -113,7 +113,6 @@ function updateStepper() {
 function showStep(step) {
     if (step > maxAvailableStep() || uiState.currentMeasurement) return;
     uiState.currentStep = step;
-    document.body.classList.remove("measurement-active");
     document.querySelectorAll(".workflow-screen").forEach(screen => screen.hidden = true);
     $(screens[step]).hidden = false;
     updateStepper();
@@ -122,7 +121,6 @@ function showStep(step) {
 
 function showMeasurementScreen() {
     uiState.currentStep = 4;
-    document.body.classList.add("measurement-active");
     document.querySelectorAll(".workflow-screen").forEach(screen => screen.hidden = true);
     $("screenMeasurement").hidden = false;
     updateStepper();
