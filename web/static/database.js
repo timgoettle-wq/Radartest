@@ -10,6 +10,20 @@ const esc = value => String(value ?? "").replace(/[&<>"']/g, char => ({"&":"&amp
 const rows = table => state.tables[table].rows;
 const find = (table, id) => rows(table).find(row => row.id === Number(id));
 const related = (table, key, id) => rows(table).filter(row => row[key] === Number(id));
+const textCollator = new Intl.Collator("de", {sensitivity:"base", numeric:true});
+
+function textGroup(value) {
+  const firstCharacter = String(value ?? "").trim().charAt(0);
+  if (!firstCharacter) return 3;
+  if (/^\p{L}$/u.test(firstCharacter)) return 0;
+  if (/^\p{N}$/u.test(firstCharacter)) return 1;
+  return 2;
+}
+
+function compareText(left, right) {
+  return textGroup(left) - textGroup(right)
+    || textCollator.compare(String(left ?? ""), String(right ?? ""));
+}
 
 const FIELD_INFO = {
   manufacturer:{label:"Hersteller"}, model:{label:"Modell"}, generation:{label:"Baureihe"},
@@ -92,7 +106,7 @@ async function load(successMessage="") {
 function fillManufacturerFilter() {
   const select = $("manufacturerFilter");
   const current = select.value;
-  const manufacturers = [...new Set(rows("vehicles").map(v => v.manufacturer).filter(Boolean))].sort();
+  const manufacturers = [...new Set(rows("vehicles").map(v => v.manufacturer).filter(Boolean))].sort(compareText);
   select.replaceChildren(new Option("Alle Hersteller", ""));
   manufacturers.forEach(value => select.add(new Option(value, value)));
   select.value = manufacturers.includes(current) ? current : "";
@@ -123,7 +137,12 @@ function renderVehicleList() {
     const text = [vehicle.manufacturer, vehicle.model, vehicle.generation, vehicle.description].join(" ").toLowerCase();
     const yearMatches = !year || ((!vehicle.year_from || vehicle.year_from <= year) && (!vehicle.year_to || vehicle.year_to >= year));
     return (!query || text.includes(query)) && (!manufacturer || vehicle.manufacturer === manufacturer) && yearMatches;
-  });
+  }).sort((left, right) =>
+    compareText(left.manufacturer, right.manufacturer)
+    || compareText(left.model, right.model)
+    || compareText(left.generation, right.generation)
+    || Number(left.id) - Number(right.id)
+  );
   $("emptyVehicles").hidden = vehicles.length > 0;
   $("vehicleList").innerHTML = vehicles.map(vehicle => {
     return `<tr class="vehicle-table-row clickable-table-row" data-open-vehicle="${vehicle.id}" tabindex="0" role="button">
