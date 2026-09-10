@@ -177,6 +177,7 @@ function renderRun(data) {
     const summary = data.summary;
     const run = data.run;
     $("runDetailTitle").textContent = summary.vehicle_name;
+    $("runBreadcrumb").textContent = summary.vehicle_name;
     $("runDetailSubtitle").textContent = summary.run_id;
     $("downloadRun").href = "/api/results/" + encodeURIComponent(summary.run_id) + "/download";
     const facts = $("runFacts");
@@ -315,6 +316,8 @@ function renderMeasurement(data) {
     const measurement = data.measurement;
     const summary = data.summary;
     $("archiveMeasurementTitle").textContent = testTypeLabel(measurement.type);
+    $("measurementBreadcrumb").textContent = testTypeLabel(measurement.type);
+    $("backToRun").textContent = data.run.vehicle_name || "TestRun";
     $("archiveMeasurementSubtitle").textContent = data.run.vehicle_name + " · " + parameterText(measurement);
     $("archiveDuration").textContent = formatNumber(summary.duration_s, 2, " s");
     $("archiveSamples").textContent = String(summary.sample_count);
@@ -435,6 +438,7 @@ $("resultSearch").addEventListener("input", renderResults);
 $("resultStatusFilter").addEventListener("change", renderResults);
 $("resultTypeFilter").addEventListener("change", renderResults);
 $("backToResults").addEventListener("click", () => { showView("resultsOverview"); setLocation(); });
+$("backToResultsFromMeasurement").addEventListener("click", () => { showView("resultsOverview"); setLocation(); });
 $("backToRun").addEventListener("click", () => { showView("runDetail"); setLocation(resultState.currentRun.summary.run_id); });
 window.addEventListener("popstate", restoreFromLocation);
 window.addEventListener("resize", () => {
