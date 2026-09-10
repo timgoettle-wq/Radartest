@@ -187,15 +187,19 @@ function renderSensorsTab(vehicle) {
   const sensors = related("ecus", "vehicle_id", vehicle.id);
   const cards = sensors.map(sensor => {
     const identifications = related("identification_parameters", "ecu_id", sensor.id);
+    const dtcs = related("dtc_config", "ecu_id", sensor.id);
     return `<article class="entity-card">
       <div class="entity-header"><div><p class="eyebrow">Radarsensor</p><h2>${esc(sensor.name)}</h2><p>${esc(sensor.channel)} · ${esc(sensor.interface.toUpperCase())} / ${esc(sensor.transport.toUpperCase())}</p></div><div class="button-row">${action("Bearbeiten", "editSensor", sensor.id)}${action("Löschen", "deleteSensor", sensor.id, "danger ghost")}</div></div>
       <div class="compact-facts">${fact("Request", hex(sensor.request_id))}${fact("Response", hex(sensor.response_id))}${fact("Bitrate", `${Number(sensor.bitrate).toLocaleString("de-DE")} bit/s`)}${fact("TX-Padding", sensor.tx_padding === null ? "—" : hex(sensor.tx_padding))}</div>
       <div class="subsection"><div class="section-heading"><div><h3>Hardware- und Softwarestände</h3><p>Auslesbare Identifikationsmerkmale und bekannte Serienwerte.</p></div>${action("+ Kennung", "newIdentification", sensor.id)}</div>
         ${identifications.length ? identifications.map(renderIdentification).join("") : `<p class="empty-inline">Noch keine Identifikationsmerkmale hinterlegt.</p>`}
       </div>
+      <div class="subsection"><div class="section-heading"><div><h3>DTC-Abfrage</h3><p>Fehlerspeicherabfrage dieses Radarsensors.</p></div>${action("+ DTC-Abfrage", "newDtc", sensor.id)}</div>
+        ${dtcs.map(dtc => `<div class="list-row"><div><strong>Service ${hex(dtc.service)}</strong><span>Subfunktion ${hex(dtc.subfunction)} · Statusmaske ${hex(dtc.status_mask)} · ${dtc.enabled ? "aktiv" : "inaktiv"}</span></div><div class="button-row">${action("Bearbeiten", "editDtc", dtc.id, "link-button")}${action("Löschen", "deleteDtc", dtc.id, "link-button danger-text")}</div></div>`).join("") || `<p class="empty-inline">Keine DTC-Abfrage konfiguriert.</p>`}
+      </div>
     </article>`;
   }).join("");
-  $("detailContent").innerHTML = `<div class="section-heading"><div><h2>Radarsensoren</h2><p>Sensorpositionen, Kommunikation und Versionskennungen.</p></div>${action("+ Sensor hinzufügen", "newSensor")}</div>${cards || `<p class="empty-state">Noch kein Radarsensor angelegt.</p>`}`;
+  $("detailContent").innerHTML = `<div class="section-heading"><div><h2>Radarsensoren</h2><p>Sensorpositionen, Kommunikation, Versionskennungen und DTC-Abfragen.</p></div>${action("+ Sensor hinzufügen", "newSensor")}</div>${cards || `<p class="empty-state">Noch kein Radarsensor angelegt.</p>`}`;
 }
 
 function renderIdentification(item) {
@@ -213,14 +217,11 @@ function renderDiagnosisTab(vehicle) {
     $("detailContent").innerHTML = `<div class="empty-state"><h2>Zuerst einen Radarsensor anlegen</h2><p>Diagnoseparameter werden immer einem Sensor zugeordnet.</p>${action("+ Sensor hinzufügen", "newSensor")}</div>`;
     return;
   }
-  $("detailContent").innerHTML = `<div class="section-heading"><div><h2>Diagnose</h2><p>Parameter, Signale und DTC-Abfragen nach Radarsensor.</p></div></div>${sensors.map(sensor => {
+  $("detailContent").innerHTML = `<div class="section-heading"><div><h2>Diagnose</h2><p>Diagnoseparameter und Signalfelder nach Radarsensor.</p></div></div>${sensors.map(sensor => {
     const parameters = related("diagnostic_parameters", "ecu_id", sensor.id);
-    const dtcs = related("dtc_config", "ecu_id", sensor.id);
     return `<article class="entity-card">
       <div class="entity-header"><div><p class="eyebrow">${esc(sensor.name)}</p><h2>Diagnoseparameter</h2><p>${sensorSummary(sensor)}</p></div>${action("+ Parameter", "newParameter", sensor.id)}</div>
       ${parameters.length ? parameters.map(renderParameter).join("") : `<p class="empty-inline">Noch keine Diagnoseparameter hinterlegt.</p>`}
-      <div class="subsection"><div class="section-heading"><div><h3>DTC-Abfrage</h3><p>Fehlerspeicherabfrage dieses Steuergeräts.</p></div>${action("+ DTC-Abfrage", "newDtc", sensor.id)}</div>
-      ${dtcs.map(dtc => `<div class="list-row"><div><strong>Service ${hex(dtc.service)}</strong><span>Subfunktion ${hex(dtc.subfunction)} · Statusmaske ${hex(dtc.status_mask)} · ${dtc.enabled ? "aktiv" : "inaktiv"}</span></div><div class="button-row">${action("Bearbeiten", "editDtc", dtc.id, "link-button")}${action("Löschen", "deleteDtc", dtc.id, "link-button danger-text")}</div></div>`).join("") || `<p class="empty-inline">Keine DTC-Abfrage konfiguriert.</p>`}</div>
     </article>`;
   }).join("")}`;
 }
