@@ -115,6 +115,7 @@ table {width:100%;border-collapse:collapse;}th,td {padding:10px;border-bottom:1p
 .app-title {display:flex;align-items:center;gap:11px;font-size:20px;white-space:nowrap;}
 .app-mark {width:5px;height:28px;border-radius:3px;background:var(--green-light);}
 .session-summary {justify-self:center;display:flex;align-items:center;gap:10px;font-size:14px;min-width:0;}
+.session-summary[hidden] {display:none!important;}
 .summary-divider {opacity:.35;}
 .connection-label,.system-indicator {display:inline-flex;align-items:center;gap:7px;white-space:nowrap;}
 .connection-label i,.system-indicator i,.live-badge i {width:9px;height:9px;border-radius:50%;background:#a7b7b0;display:inline-block;}
