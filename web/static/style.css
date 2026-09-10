@@ -545,3 +545,134 @@ button.primary,.database-page button.secondary,.database-page button.danger,.res
     .database-page .filter-bar,.results-page .results-filter-bar {grid-template-columns:minmax(0,1fr);}
     .test-app .chart-card,.results-page .archive-chart-card {padding:12px;}
 }
+
+
+/* Hierarchie in Datenpflege- und Ergebnisdetails. */
+.database-page #detailContent > article.entity-card {
+    margin:18px 0 26px;
+    padding:20px;
+    background:#e8f2ed;
+    border:1px solid #c8ddd2;
+    border-left:4px solid var(--green-primary);
+    border-radius:5px;
+}
+.database-page #detailContent > article.entity-card > .entity-header {
+    margin:-20px -20px 18px;
+    padding:18px 20px;
+    background:#deece5;
+    border-bottom:1px solid #c8ddd2;
+}
+.database-page #detailContent > article.entity-card > .entity-header .eyebrow {
+    margin-bottom:3px!important;
+}
+.database-page #detailContent .nested-card {
+    margin:10px 0;
+    padding:14px 16px;
+    background:rgba(255,255,255,.58);
+    border:1px solid #cbded4;
+    border-radius:4px;
+}
+.database-page #detailContent .nested-card:hover {
+    border-color:#9fc6b2;
+}
+.database-page #detailContent .nested-main {
+    min-height:38px;
+}
+.database-page #detailContent .signal-list,
+.database-page #detailContent .reference-list {
+    margin:12px 0 10px 5px;
+    padding:2px 0 2px 17px;
+    border-top:0;
+    border-left:3px solid var(--green-light);
+}
+.database-page #detailContent .signal-list .list-row,
+.database-page #detailContent .reference-list .reference-row {
+    padding:10px 8px;
+    background:rgba(255,255,255,.45);
+}
+.database-page #detailContent .signal-list .list-row:hover,
+.database-page #detailContent .reference-list .reference-row:hover,
+.database-page #detailContent .subsection > .list-row:hover {
+    background:rgba(255,255,255,.85);
+}
+.database-page #detailContent .subsection {
+    border-top:1px solid #bfd6ca;
+}
+.database-page #detailContent .subsection > .list-row {
+    padding:11px 8px;
+}
+.database-page #detailContent .small-button {
+    margin-left:5px;
+}
+
+/* Dieselbe visuelle Hierarchie für geöffnete TestRuns und Messungen. */
+.results-page #runDetail .run-check-grid > .archive-card,
+.results-page #runDetail > .measurements-card {
+    padding:20px;
+    background:#e8f2ed;
+    border:1px solid #c8ddd2;
+    border-left:4px solid var(--green-primary);
+    border-radius:5px;
+}
+.results-page #runDetail .archive-card > .section-title {
+    margin:-20px -20px 16px;
+    padding:16px 20px;
+    background:#deece5;
+    border-bottom:1px solid #c8ddd2;
+}
+.results-page #runDetail .archive-card details {
+    padding:12px 14px;
+    background:rgba(255,255,255,.58);
+    border:1px solid #cbded4;
+    border-left:3px solid var(--green-light);
+    border-radius:3px;
+}
+.results-page #runDetail .archive-card details + details {
+    margin-top:10px;
+}
+.results-page #runDetail .measurements-card .table-scroll {
+    border:1px solid #c8ddd2;
+    border-radius:3px;
+}
+.results-page #measurementDetail .archive-metrics,
+.results-page #measurementDetail .archive-metadata {
+    padding:14px 18px;
+    background:#e8f2ed;
+    border:1px solid #c8ddd2;
+    border-left:4px solid var(--green-primary);
+    border-radius:5px;
+}
+.results-page #measurementDetail .archive-metrics .metric-card,
+.results-page #measurementDetail .archive-metadata .fact {
+    padding:10px 12px;
+    border-bottom:0;
+    border-right:1px solid #c8ddd2;
+}
+.results-page #measurementDetail .archive-metrics .metric-card:last-child,
+.results-page #measurementDetail .archive-metadata .fact:last-child {
+    border-right:0;
+}
+.results-page #measurementDetail .archive-chart-card {
+    margin-top:22px;
+}
+@media(max-width:900px) {
+    .results-page #measurementDetail .archive-metrics .metric-card:nth-child(2n),
+    .results-page #measurementDetail .archive-metadata .fact:nth-child(2n) {
+        border-right:0;
+    }
+}
+@media(max-width:650px) {
+    .database-page #detailContent > article.entity-card {padding:16px;}
+    .database-page #detailContent > article.entity-card > .entity-header {
+        margin:-16px -16px 16px;padding:16px;
+    }
+    .results-page #runDetail .run-check-grid > .archive-card,
+    .results-page #runDetail > .measurements-card {padding:16px;}
+    .results-page #runDetail .archive-card > .section-title {
+        margin:-16px -16px 14px;padding:14px 16px;
+    }
+    .results-page #measurementDetail .archive-metrics .metric-card,
+    .results-page #measurementDetail .archive-metadata .fact {
+        border-right:0;border-bottom:1px solid #c8ddd2;
+    }
+}
