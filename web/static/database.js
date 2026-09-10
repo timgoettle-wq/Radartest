@@ -195,7 +195,7 @@ function renderSensorsTab(vehicle) {
         ${identifications.length ? identifications.map(renderIdentification).join("") : `<p class="empty-inline">Noch keine Identifikationsmerkmale hinterlegt.</p>`}
       </div>
       <div class="subsection"><div class="section-heading"><div><h3>DTC-Abfrage</h3><p>Fehlerspeicherabfrage dieses Radarsensors.</p></div>${action("+ DTC-Abfrage", "newDtc", sensor.id)}</div>
-        ${dtcs.map(dtc => `<div class="list-row"><div><strong>Service ${hex(dtc.service)}</strong><span>Subfunktion ${hex(dtc.subfunction)} · Statusmaske ${hex(dtc.status_mask)} · ${dtc.enabled ? "aktiv" : "inaktiv"}</span></div><div class="button-row">${action("Bearbeiten", "editDtc", dtc.id, "link-button")}${action("Löschen", "deleteDtc", dtc.id, "link-button danger-text")}</div></div>`).join("") || `<p class="empty-inline">Keine DTC-Abfrage konfiguriert.</p>`}
+        ${dtcs.map(dtc => `<div class="list-row nested-card dtc-config-card"><div><strong>Service ${hex(dtc.service)}</strong><span>Subfunktion ${hex(dtc.subfunction)} · Statusmaske ${hex(dtc.status_mask)} · ${dtc.enabled ? "aktiv" : "inaktiv"}</span></div><div class="button-row">${action("Bearbeiten", "editDtc", dtc.id, "link-button")}${action("Löschen", "deleteDtc", dtc.id, "link-button danger-text")}</div></div>`).join("") || `<p class="empty-inline">Keine DTC-Abfrage konfiguriert.</p>`}
       </div>
     </article>`;
   }).join("");
