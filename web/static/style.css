@@ -433,20 +433,20 @@ button.primary,.database-page button.secondary,.database-page button.danger,.res
 }
 
 
-/* Arbeitsflächen-Prototyp: ausschließlich Fahrzeug- und Prüfungsauswahl. */
-.workflow-shell:has(> .workbench-screen:not([hidden])) {
+/* Gemeinsame Arbeitsflächen für Prüfablauf, Ergebnisse und Datenpflege. */
+.test-app .workflow-shell {
     width:calc(100% - 64px);
     margin:20px auto 32px;
 }
-.workflow-shell:has(> .workbench-screen:not([hidden])) > .stepper {
+.test-app .workflow-shell > .stepper {
     border:0;border-bottom:1px solid var(--green-border);border-radius:0;
     background:transparent;
 }
-.workflow-shell:has(> .workbench-screen:not([hidden])) > .app-message:empty {display:none;}
-.test-app .workbench-screen {
+.test-app .workflow-shell > .app-message:empty {display:none;}
+.test-app .workflow-screen {
     background:transparent;border:0;border-radius:0;box-shadow:none;padding:24px 0;
 }
-.workbench-screen .screen-heading {padding-bottom:24px;border-bottom:1px solid var(--green-border);}
+.workflow-screen .screen-heading {padding-bottom:24px;border-bottom:1px solid var(--green-border);}
 #screenVehicle.workbench-screen {
     display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:28px 48px;
 }
@@ -463,7 +463,7 @@ button.primary,.database-page button.secondary,.database-page button.danger,.res
 #screenVehicle #connectionResult[hidden] {display:none!important;}
 #screenVehicle #connectionResult h2 {margin-top:0;font-size:20px;}
 #screenVehicle .check-row {background:transparent;border:0;border-bottom:1px solid var(--green-border);border-radius:0;padding:12px 0;}
-.workbench-screen .screen-actions {padding:20px 0 0;margin-top:32px;}
+.workflow-screen .screen-actions {padding:20px 0 0;margin-top:32px;}
 .test-mode-selector {display:flex;gap:0;border:0;border-bottom:1px solid var(--green-border);padding:0;margin:0 0 32px;}
 .test-mode-selector legend {font-size:13px;font-weight:700;color:var(--text-muted);margin-bottom:12px;}
 .test-mode-selector label {display:flex;align-items:center;gap:10px;padding:14px 28px;cursor:pointer;border-bottom:3px solid transparent;font-weight:700;}
@@ -478,9 +478,70 @@ button.primary,.database-page button.secondary,.database-page button.danger,.res
 #screenTests .test-type-card > button {align-self:flex-start;}
 #screenTests input,#screenVehicle select {border-radius:4px;}
 @media(max-width:760px) {
-    .workflow-shell:has(> .workbench-screen:not([hidden])) {width:calc(100% - 32px);}
+    .test-app .workflow-shell {width:calc(100% - 32px);}
     #screenVehicle.workbench-screen {grid-template-columns:minmax(0,1fr);gap:24px;}
     #screenVehicle #connectionResult {border-left:0;border-top:1px solid var(--green-border);padding:24px 0 0;}
     .test-mode-selector label {padding:12px 16px;}
     #screenTests .parameter-grid {grid-template-columns:1fr;}
+}
+
+
+/* Flächige Detailansichten; Tabellen und Diagramme behalten eine helle Lesefläche. */
+.test-app,.database-page,.results-page {background:var(--green-surface);}
+.database-page main,.results-page .results-shell {
+    width:calc(100% - 64px);margin:20px auto 32px;
+}
+.database-page .workspace,.results-page .results-view {
+    padding:0;border:0;border-radius:0;box-shadow:none;background:transparent;
+}
+.database-page .page-header,.results-page .page-header {
+    padding:24px 0;border-bottom:1px solid var(--green-border);margin-bottom:24px;
+}
+.database-page .page-header h1,.results-page .page-header h1 {font-size:29px;}
+.database-page .breadcrumbs:empty {display:none;}
+.database-page .filter-bar,.results-page .results-filter-bar {margin:0 0 24px;}
+.database-page .results-table-wrap,.results-page .results-table-wrap {border-radius:4px;background:white;}
+.database-page table,.results-page table,.test-app .identification-table {background:white;}
+.database-page .entity-card,.database-page .nested-card,
+.database-page .description-box,.results-page .archive-card,
+.test-app .result-panel,.test-app .result-columns article,.test-app .detail-card {
+    background:transparent;border:0;border-top:1px solid var(--green-border);
+    border-radius:0;box-shadow:none;padding:24px 0;
+}
+.test-app .result-panel {margin-top:24px;}
+.test-app .result-columns,.results-page .run-check-grid {gap:32px;}
+.database-page .fact,.results-page .fact,
+.test-app .metric-card,.results-page .metric-card {
+    background:transparent;border:0;border-bottom:1px solid var(--green-border);
+    border-radius:0;box-shadow:none;padding:16px 0;
+}
+.test-app .primary-metric {border-top:3px solid var(--green-primary);}
+.test-app .chart-card,.results-page .archive-chart-card {
+    background:white;border:1px solid var(--green-border);border-radius:4px;
+    box-shadow:none;padding:20px;
+}
+.results-page .result-run-facts,.results-page .archive-metadata {
+    background:transparent;border:0;border-bottom:1px solid var(--green-border);
+    border-radius:0;padding:16px 0;
+}
+.database-page .tabs {margin:0 0 24px;}
+.database-page .entity-header,.database-page .nested-main {flex-wrap:wrap;}
+.database-page .fact,.database-page .entity-header > div,
+.database-page .nested-main > div {min-width:0;overflow-wrap:anywhere;}
+.test-app input,.test-app select,.database-page input,.database-page select,
+.database-page textarea,.results-page input,.results-page select {border-radius:4px;}
+.database-page dialog {border-radius:6px;}
+.database-page footer {width:calc(100% - 64px);}
+@media(max-width:900px) {
+    .database-page .filter-bar,.results-page .results-filter-bar {
+        grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+    }
+}
+@media(max-width:760px) {
+    .database-page main,.results-page .results-shell,.database-page footer {width:calc(100% - 32px);}
+    .test-app .result-columns,.results-page .run-check-grid {gap:20px;}
+}
+@media(max-width:650px) {
+    .database-page .filter-bar,.results-page .results-filter-bar {grid-template-columns:minmax(0,1fr);}
+    .test-app .chart-card,.results-page .archive-chart-card {padding:12px;}
 }
