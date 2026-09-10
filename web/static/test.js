@@ -283,6 +283,11 @@ function formatFrequency(value) {
     return value ?? "–";
 }
 
+function formatPower(value) {
+    if (value === null || value === undefined || value === "") return "–";
+    return `${value} dBm`;
+}
+
 function renderPrecheck(data) {
     const skipped = Boolean(data.skipped);
     $("precheckResult").hidden = false;
@@ -293,7 +298,7 @@ function renderPrecheck(data) {
     $("precheckConnection").textContent = skipped ? "Nicht geprüft" : "✓ Verbunden";
     $("frequency").textContent = skipped ? "Übersprungen" : formatFrequency(data.frequency_range);
     $("polarization").textContent = skipped ? "Übersprungen" : (data.polarization ?? "–");
-    $("power").textContent = skipped ? "Übersprungen" : (data.power ?? "–");
+    $("power").textContent = skipped ? "Übersprungen" : formatPower(data.power);
 }
 
 function updatePrecheckProgress(activePhase = null, completedPhases = [], errorPhase = null) {
