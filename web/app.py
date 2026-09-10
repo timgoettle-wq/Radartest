@@ -334,6 +334,47 @@ def run_precheck():
         )
 
 
+def _run_precheck_phase(method_name):
+
+    if controller is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Testsystem ist nicht verbunden"
+        )
+
+    try:
+        return getattr(controller, method_name)()
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=str(error)
+        )
+
+
+@app.post("/api/precheck/start")
+@serialized_controller_access
+def start_precheck():
+    return _run_precheck_phase("start_precheck")
+
+
+@app.post("/api/precheck/polarization")
+@serialized_controller_access
+def measure_precheck_polarization():
+    return _run_precheck_phase("measure_precheck_polarization")
+
+
+@app.post("/api/precheck/frequency")
+@serialized_controller_access
+def measure_precheck_frequency():
+    return _run_precheck_phase("measure_precheck_frequency")
+
+
+@app.post("/api/precheck/power")
+@serialized_controller_access
+def measure_precheck_power():
+    return _run_precheck_phase("measure_precheck_power")
+
+
 @app.post("/api/precheck/skip")
 @serialized_controller_access
 def skip_precheck():

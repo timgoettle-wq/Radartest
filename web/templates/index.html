@@ -92,6 +92,11 @@
                 <button id="precheckButton" class="primary large-action" type="button">Precheck starten</button>
                 <button id="skipPrecheckButton" class="secondary" type="button">Precheck überspringen</button>
             </div>
+            <div id="precheckProgress" class="precheck-progress" aria-live="polite" hidden>
+                <div data-precheck-phase="polarization"><span>1</span><strong>Polarisation</strong></div>
+                <div data-precheck-phase="frequency"><span>2</span><strong>Frequenzerkennung</strong></div>
+                <div data-precheck-phase="power"><span>3</span><strong>Leistungsmessung</strong></div>
+            </div>
             <div id="precheckResult" class="result-panel" hidden>
                 <div id="precheckSummary" class="result-banner"></div>
                 <div class="metric-grid compact">

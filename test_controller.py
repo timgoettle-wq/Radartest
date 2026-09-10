@@ -449,76 +449,85 @@ class TestController:
 
     def run_precheck(self):
 
-        self._check_connection()
+        self.start_precheck()
+        self.measure_precheck_polarization()
+        self.measure_precheck_frequency()
+        return self.measure_precheck_power()
 
+
+    def start_precheck(self):
+
+        self._check_connection()
 
         self.precheck_done = False
         self.precheck_skipped = False
+        self.polarization = None
+        self.frequency_range = None
+        self.power = None
+
+        return {
+            "status": "running",
+            "phase": "polarization"
+        }
 
 
-        # --------------------------------------------------
-        # Polarisation
-        # --------------------------------------------------
+    def measure_precheck_polarization(self):
+
+        self._check_connection()
 
         self.polarization = (
             self.radest
             .measure_get_polarization_77ghz()
         )
 
+        return {
+            "status": "running",
+            "phase": "frequency",
+            "polarization": self.polarization
+        }
 
-        # --------------------------------------------------
-        # Frequenzbereich
-        # --------------------------------------------------
+
+    def measure_precheck_frequency(self):
+
+        self._check_connection()
 
         self.frequency_range = (
             self.radest
             .measure_get_frequencyrange()
         )
 
+        return {
+            "status": "running",
+            "phase": "power",
+            "polarization": self.polarization,
+            "frequency_range": self.frequency_range
+        }
 
-        # --------------------------------------------------
-        # Leistung / EIRP
-        # --------------------------------------------------
+
+    def measure_precheck_power(self):
+
+        self._check_connection()
 
         self.power = (
             self.radest
             .measure_get_77ghz_eirp()
         )
 
-
         self.precheck_done = True
         self.precheck_skipped = False
 
-
         result = {
-
-            "status":
-                "completed",
-
-            "skipped":
-                False,
-
-            "polarization":
-                self.polarization,
-
-            "frequency_range":
-                self.frequency_range,
-
-            "power":
-                self.power
+            "status": "completed",
+            "skipped": False,
+            "polarization": self.polarization,
+            "frequency_range": self.frequency_range,
+            "power": self.power
         }
 
-
-        # --------------------------------------------------
-        # Precheck im TestRun speichern
-        # --------------------------------------------------
-
         if self.test_run is not None:
-
             self.test_run.set_precheck(
                 result
             )
-
 
         return result
 

@@ -113,6 +113,7 @@ function updateStepper() {
 function showStep(step) {
     if (step > maxAvailableStep() || uiState.currentMeasurement) return;
     uiState.currentStep = step;
+    document.body.classList.remove("measurement-active");
     document.querySelectorAll(".workflow-screen").forEach(screen => screen.hidden = true);
     $(screens[step]).hidden = false;
     updateStepper();
@@ -121,6 +122,7 @@ function showStep(step) {
 
 function showMeasurementScreen() {
     uiState.currentStep = 4;
+    document.body.classList.add("measurement-active");
     document.querySelectorAll(".workflow-screen").forEach(screen => screen.hidden = true);
     $("screenMeasurement").hidden = false;
     updateStepper();
@@ -296,11 +298,39 @@ function renderPrecheck(data) {
     $("power").textContent = skipped ? "Übersprungen" : (data.power ?? "–");
 }
 
+function updatePrecheckProgress(activePhase = null, completedPhases = [], errorPhase = null) {
+    const progress = $("precheckProgress");
+    progress.hidden = false;
+    progress.querySelectorAll("[data-precheck-phase]").forEach((item, index) => {
+        const phase = item.dataset.precheckPhase;
+        const completed = completedPhases.includes(phase);
+        item.className = completed ? "complete" : phase === activePhase ? "active" : phase === errorPhase ? "error" : "";
+        item.querySelector("span").textContent = completed ? "✓" : String(index + 1);
+    });
+}
+
 async function runPrecheck() {
     clearError();
     setBusy($("precheckButton"), true, "Precheck läuft …", "Precheck starten");
+    $("skipPrecheckButton").disabled = true;
+    $("precheckResult").hidden = true;
+    let activePhase = "polarization";
+    const completedPhases = [];
     try {
-        const data = await apiRequest("/api/precheck", {method: "POST"});
+        await apiRequest("/api/precheck/start", {method: "POST"});
+        updatePrecheckProgress(activePhase, completedPhases);
+        await apiRequest("/api/precheck/polarization", {method: "POST"});
+        completedPhases.push("polarization");
+        activePhase = "frequency";
+        updatePrecheckProgress(activePhase, completedPhases);
+        await apiRequest("/api/precheck/frequency", {method: "POST"});
+        completedPhases.push("frequency");
+        activePhase = "power";
+        updatePrecheckProgress(activePhase, completedPhases);
+        const data = await apiRequest("/api/precheck/power", {method: "POST"});
+        completedPhases.push("power");
+        activePhase = null;
+        updatePrecheckProgress(activePhase, completedPhases);
         uiState.precheckComplete = true;
         uiState.precheckSkipped = false;
         renderPrecheck(data);
@@ -310,13 +340,16 @@ async function runPrecheck() {
         $("toTestsButton").disabled = false;
         updateStepper();
     } catch (error) {
+        updatePrecheckProgress(null, completedPhases, activePhase);
         setBusy($("precheckButton"), false, "", "Precheck starten");
+        $("skipPrecheckButton").disabled = false;
         showError(error.message);
     }
 }
 
 async function skipPrecheck() {
     clearError();
+    $("precheckProgress").hidden = true;
     setBusy($("skipPrecheckButton"), true, "Wird dokumentiert …", "Precheck überspringen");
     try {
         const data = await apiRequest("/api/precheck/skip", {method: "POST"});
@@ -675,6 +708,7 @@ function resetWorkflow() {
     $("connectionResult").hidden = true;
     $("quickCheckResult").hidden = true;
     $("precheckResult").hidden = true;
+    $("precheckProgress").hidden = true;
     $("toQuickCheckButton").disabled = true;
     $("toPrecheckButton").disabled = true;
     $("toTestsButton").disabled = true;

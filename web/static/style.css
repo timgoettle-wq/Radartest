@@ -183,7 +183,19 @@ table {width:100%;border-collapse:collapse;}th,td {padding:10px;border-bottom:1p
 .check-row.warning i {background:#d98b00;}
 .check-row.warning i::after {content:"!";position:absolute;color:white;font-weight:bold;left:8px;top:1px;}
 .screen-actions {display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:28px;padding-top:20px;border-top:1px solid var(--green-border);}
+.screen-actions button {min-width:130px;}
 .precheck-actions {display:flex;gap:10px;align-items:center;}
+.precheck-progress {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:22px;}
+.precheck-progress[hidden] {display:none!important;}
+.precheck-progress div {display:flex;align-items:center;gap:10px;padding:14px;border:1px solid var(--green-border);border-radius:9px;background:#f7faf8;color:#73827b;}
+.precheck-progress span {display:grid;place-items:center;width:27px;height:27px;flex:0 0 auto;border-radius:50%;background:#e3ebe7;font-size:12px;font-weight:700;}
+.precheck-progress strong {font-size:14px;}
+.precheck-progress div.active {border-color:var(--green-primary);background:#eef8f2;color:var(--green-dark);box-shadow:0 0 0 3px rgba(0,129,67,.1);}
+.precheck-progress div.active span {background:var(--green-primary);color:white;}
+.precheck-progress div.complete {color:var(--green-dark);}
+.precheck-progress div.complete span {background:var(--green-light);color:white;}
+.precheck-progress div.error {border-color:#d8989c;background:#fff3f3;color:#92262c;}
+.precheck-progress div.error span {background:#ad3036;color:white;}
 .result-banner {padding:12px 15px;border-radius:8px;font-weight:700;margin-bottom:20px;}
 .result-banner.success {background:#e0f2e7;color:#00663c;border-left:4px solid var(--green-primary);}
 .result-banner.warning {background:#fff2d8;color:#704a00;border-left:4px solid #d98b00;}
@@ -240,6 +252,22 @@ table {width:100%;border-collapse:collapse;}th,td {padding:10px;border-bottom:1p
 @keyframes live-pulse {50%{box-shadow:0 0 0 6px rgba(0,169,88,0);}}
 .stop-action {display:block;margin:24px auto 0!important;min-width:220px;}
 
+.measurement-active .workflow-shell {width:min(1280px,calc(100% - 28px));margin:14px auto 24px;}
+.measurement-active .stepper {display:none;}
+.measurement-active .app-message:empty {display:none;}
+.measurement-active .measurement-screen {padding:18px 22px;}
+.measurement-active .measurement-screen .screen-heading {margin-bottom:12px;}
+.measurement-active .measurement-screen .screen-heading h1 {font-size:25px;margin-bottom:3px;}
+.measurement-active .primary-metric {padding:13px 16px;}
+.measurement-active .primary-metric strong {font-size:24px;}
+.measurement-active .measurement-layout {grid-template-columns:minmax(0,2.2fr) minmax(260px,.8fr);gap:12px;margin-top:12px;}
+.measurement-active .chart-card,.measurement-active .detail-card {padding:13px 15px;}
+.measurement-active .section-title {margin-bottom:8px;}
+.measurement-active #liveChart {height:clamp(190px,calc(100vh - 520px),300px);}
+.measurement-active .detail-card h2 {font-size:18px;margin:0 0 4px;}
+.measurement-active .measurement-details div {padding:7px 0;}
+.measurement-active .stop-action {margin-top:14px!important;}
+
 .result-context {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:18px;}
 .result-context div {display:flex;flex-direction:column;gap:5px;}
 .result-context span,.log-output span {color:var(--text-muted);font-size:12px;text-transform:uppercase;font-weight:700;letter-spacing:.04em;}
@@ -254,7 +282,7 @@ table {width:100%;border-collapse:collapse;}th,td {padding:10px;border-bottom:1p
     .header-main {grid-template-columns:auto 1fr auto;gap:15px;}
     .session-summary {grid-column:1/-1;grid-row:2;justify-self:start;padding-bottom:12px;}
     .utility-nav {justify-self:end;}
-    .result-columns,.measurement-layout {grid-template-columns:1fr;}
+    .result-columns,.measurement-layout,.measurement-active .measurement-layout {grid-template-columns:1fr;}
     .metric-grid.compact,.result-context {grid-template-columns:repeat(2,1fr);}
 }
 
@@ -277,6 +305,7 @@ table {width:100%;border-collapse:collapse;}th,td {padding:10px;border-bottom:1p
     .screen-actions,.precheck-actions,.result-actions {align-items:stretch;flex-direction:column;}
     .screen-actions span {display:none;}
     .screen-actions button {width:100%;}
+    .precheck-progress {grid-template-columns:1fr;}
 }
 
 /* Fahrzeugzentrierte Datenpflege */
