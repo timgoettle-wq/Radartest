@@ -47,7 +47,7 @@
         <p id="error" class="app-message error-message" role="alert"></p>
         <p id="appMessage" class="app-message" role="status"></p>
 
-        <section id="screenVehicle" class="workflow-screen">
+        <section id="screenVehicle" class="workflow-screen workbench-screen">
             <div class="screen-heading">
                 <div><p class="eyebrow">Schritt 1</p><h1>Fahrzeug auswählen</h1><p>Fahrzeugdiagnose und RadEsT verbinden und einen neuen TestRun starten.</p></div>
             </div>
@@ -109,8 +109,13 @@
             <div class="screen-actions"><button class="secondary" data-go-step="2" type="button">Zurück</button><button id="toTestsButton" class="primary" type="button" disabled>Weiter zur Prüfung</button></div>
         </section>
 
-        <section id="screenTests" class="workflow-screen" hidden>
+        <section id="screenTests" class="workflow-screen workbench-screen" hidden>
             <div class="screen-heading"><div><p class="eyebrow">Schritt 4</p><h1>Prüfung auswählen</h1><p>Die nächste Messung wird dem aktuellen TestRun hinzugefügt.</p></div></div>
+            <fieldset class="test-mode-selector">
+                <legend>Prüfart</legend>
+                <label><input type="radio" name="testMode" id="chooseStatic" value="static" checked> Statisch</label>
+                <label><input type="radio" name="testMode" id="chooseDynamic" value="dynamic"> Dynamisch</label>
+            </fieldset>
             <div class="test-type-grid">
                 <article class="test-type-card">
                     <div><p class="eyebrow">Konstantes Ziel</p><h2>Statische Messung</h2><p>Definiertes Radarziel bei konstanter Distanz.</p></div>
