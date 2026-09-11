@@ -59,13 +59,16 @@ const SIGNAL_LABELS = {
   relative_acceleration:"Relativbeschleunigung"
 };
 
-const DIAGNOSTIC_PARAMETER_LABELS = {
-  radar_target:"Radarziel",
-  radar_distance:"Radardistanz",
-  radar_angle:"Radarwinkel",
-  radar_relative_speed:"Relativgeschwindigkeit",
-  radar_relative_acceleration:"Relativbeschleunigung"
-};
+const SENSOR_NAMES = [
+  "Frontradar Mitte",
+  "Frontradar links",
+  "Frontradar rechts",
+  "Seitenradar links",
+  "Seitenradar rechts",
+  "Heckradar Mitte",
+  "Heckradar links",
+  "Heckradar rechts"
+];
 
 const IDENTIFICATION_TYPES = {
   hardware_number:"Hardwarenummer",
@@ -90,6 +93,17 @@ function message(text, error=false) {
 
 function hex(value) {
   return value === null || value === undefined ? "—" : "0x" + Number(value).toString(16).toUpperCase();
+}
+
+function parseFormInteger(value) {
+  const text = String(value).trim();
+  return Number.parseInt(text, text.toLowerCase().startsWith("0x") ? 16 : 10);
+}
+
+function diagnosticParameterKey(service, did) {
+  const serviceHex = parseFormInteger(service).toString(16).toUpperCase().padStart(2, "0");
+  const didHex = parseFormInteger(did).toString(16).toUpperCase().padStart(4, "0");
+  return `diagnostic_${serviceHex}_${didHex}`;
 }
 
 function years(vehicle) {
@@ -204,15 +218,19 @@ function renderSensorsTab(vehicle) {
   const sensors = related("ecus", "vehicle_id", vehicle.id);
   const cards = sensors.map(sensor => {
     const identifications = related("identification_parameters", "ecu_id", sensor.id);
+    const dtcs = related("dtc_config", "ecu_id", sensor.id);
     return `<article class="entity-card">
       <div class="entity-header"><div><p class="eyebrow">Radarsensor</p><h2>${esc(sensor.name)}</h2><p>${esc(sensor.channel)} · ${esc(sensor.interface.toUpperCase())} / ${esc(sensor.transport.toUpperCase())}</p></div><div class="button-row">${action("Bearbeiten", "editSensor", sensor.id)}${action("Löschen", "deleteSensor", sensor.id, "danger ghost")}</div></div>
       <div class="compact-facts">${fact("Request", hex(sensor.request_id))}${fact("Response", hex(sensor.response_id))}${fact("Bitrate", `${Number(sensor.bitrate).toLocaleString("de-DE")} bit/s`)}${fact("TX-Padding", sensor.tx_padding === null ? "—" : hex(sensor.tx_padding))}</div>
       <div class="subsection"><div class="section-heading"><div><h3>Hardware- und Softwarestände</h3><p>Auslesbare Identifikationsmerkmale und bekannte Serienwerte.</p></div>${action("+ Kennung", "newIdentification", sensor.id)}</div>
         ${identifications.length ? identifications.map(renderIdentification).join("") : `<p class="empty-inline">Noch keine Identifikationsmerkmale hinterlegt.</p>`}
       </div>
+      <div class="subsection"><div class="section-heading"><div><h3>DTC-Abfrage</h3><p>Fehlerspeicherabfrage dieses Radarsensors.</p></div>${action("+ DTC-Abfrage", "newDtc", sensor.id)}</div>
+        ${dtcs.map(dtc => `<div class="list-row nested-card dtc-config-card"><div><strong>Service ${hex(dtc.service)}</strong><span>Subfunktion ${hex(dtc.subfunction)} · Statusmaske ${hex(dtc.status_mask)} · ${dtc.enabled ? "aktiv" : "inaktiv"}</span></div><div class="button-row">${action("Bearbeiten", "editDtc", dtc.id, "link-button")}${action("Löschen", "deleteDtc", dtc.id, "link-button danger-text")}</div></div>`).join("") || `<p class="empty-inline">Keine DTC-Abfrage konfiguriert.</p>`}
+      </div>
     </article>`;
   }).join("");
-  $("detailContent").innerHTML = `<div class="section-heading"><div><h2>Radarsensoren</h2><p>Sensorpositionen, Kommunikation und Versionskennungen.</p></div>${action("+ Sensor hinzufügen", "newSensor")}</div>${cards || `<p class="empty-state">Noch kein Radarsensor angelegt.</p>`}`;
+  $("detailContent").innerHTML = `<div class="section-heading"><div><h2>Radarsensoren</h2><p>Sensorpositionen, Kommunikation, Versionskennungen und DTC-Abfragen.</p></div>${action("+ Sensor hinzufügen", "newSensor")}</div>${cards || `<p class="empty-state">Noch kein Radarsensor angelegt.</p>`}`;
 }
 
 function renderIdentification(item) {
@@ -230,14 +248,11 @@ function renderDiagnosisTab(vehicle) {
     $("detailContent").innerHTML = `<div class="empty-state"><h2>Zuerst einen Radarsensor anlegen</h2><p>Diagnoseparameter werden immer einem Sensor zugeordnet.</p>${action("+ Sensor hinzufügen", "newSensor")}</div>`;
     return;
   }
-  $("detailContent").innerHTML = `<div class="section-heading"><div><h2>Diagnose</h2><p>Parameter, Signale und DTC-Abfragen nach Radarsensor.</p></div></div>${sensors.map(sensor => {
+  $("detailContent").innerHTML = `<div class="section-heading"><div><h2>Diagnose</h2><p>Diagnoseparameter und Signalfelder nach Radarsensor.</p></div></div>${sensors.map(sensor => {
     const parameters = related("diagnostic_parameters", "ecu_id", sensor.id);
-    const dtcs = related("dtc_config", "ecu_id", sensor.id);
     return `<article class="entity-card">
       <div class="entity-header"><div><p class="eyebrow">${esc(sensor.name)}</p><h2>Diagnoseparameter</h2><p>${sensorSummary(sensor)}</p></div>${action("+ Parameter", "newParameter", sensor.id)}</div>
       ${parameters.length ? parameters.map(renderParameter).join("") : `<p class="empty-inline">Noch keine Diagnoseparameter hinterlegt.</p>`}
-      <div class="subsection"><div class="section-heading"><div><h3>DTC-Abfrage</h3><p>Fehlerspeicherabfrage dieses Steuergeräts.</p></div>${action("+ DTC-Abfrage", "newDtc", sensor.id)}</div>
-      ${dtcs.map(dtc => `<div class="list-row"><div><strong>Service ${hex(dtc.service)}</strong><span>Subfunktion ${hex(dtc.subfunction)} · Statusmaske ${hex(dtc.status_mask)} · ${dtc.enabled ? "aktiv" : "inaktiv"}</span></div><div class="button-row">${action("Bearbeiten", "editDtc", dtc.id, "link-button")}${action("Löschen", "deleteDtc", dtc.id, "link-button danger-text")}</div></div>`).join("") || `<p class="empty-inline">Keine DTC-Abfrage konfiguriert.</p>`}</div>
     </article>`;
   }).join("")}`;
 }
@@ -245,7 +260,7 @@ function renderDiagnosisTab(vehicle) {
 function renderParameter(parameter) {
   const fields = related("signal_fields", "parameter_id", parameter.id);
   return `<div class="nested-card">
-    <div class="nested-main"><div><strong>${esc(DIAGNOSTIC_PARAMETER_LABELS[parameter.name] || parameter.name)}</strong><span>SID ${hex(parameter.service)} · DID/PID ${hex(parameter.did)}</span></div><div class="button-row">${action("Bearbeiten", "editParameter", parameter.id, "link-button")}${action("Löschen", "deleteParameter", parameter.id, "link-button danger-text")}</div></div>
+    <div class="nested-main"><div><strong>Diagnoseabfrage</strong><span>SID ${hex(parameter.service)} · DID/PID ${hex(parameter.did)}</span></div><div class="button-row">${action("Bearbeiten", "editParameter", parameter.id, "link-button")}${action("Löschen", "deleteParameter", parameter.id, "link-button danger-text")}</div></div>
     <div class="signal-list">${fields.map(field => `<div class="list-row"><div><strong>${esc(field.name)}</strong><span>Byte ${field.byte_offset}, ${field.byte_length} Byte · ${esc(field.data_type)} · Faktor ${field.factor}${field.unit ? ` · ${esc(field.unit)}` : ""}</span></div><div class="button-row">${action("Bearbeiten", "editField", field.id, "link-button")}${action("Löschen", "deleteField", field.id, "link-button danger-text")}</div></div>`).join("") || `<span class="muted">Noch kein Signalfeld definiert.</span>`}</div>
     ${action("+ Signalfeld", "newField", parameter.id, "small-button")}
   </div>`;
@@ -258,7 +273,7 @@ function openEditor(kind, row=null, fixed={}) {
   $("dialogTitle").textContent = `${row ? "Bearbeiten" : "Anlegen"}: ${config.title}`;
   $("editor").replaceChildren();
   const table = state.tables[config.table];
-  table.columns.filter(column => column.name !== "id" && !(column.name in fixed) && !(kind === "identification" && column.name === "identifier_key")).forEach(column => {
+  table.columns.filter(column => column.name !== "id" && !(column.name in fixed) && !(kind === "identification" && column.name === "identifier_key") && !(kind === "parameter" && column.name === "name")).forEach(column => {
     const info = FIELD_INFO[column.name] || {label:column.name};
     const wrapper = document.createElement("label");
     wrapper.className = info.textarea ? "wide" : "";
@@ -271,19 +286,19 @@ function openEditor(kind, row=null, fixed={}) {
     const signalChoices = kind === "field" && column.name === "name"
       ? state.signal_names.map(value => [value, `${SIGNAL_LABELS[value]} (${value})`])
       : null;
+    const sensorChoices = kind === "sensor" && column.name === "name"
+      ? SENSOR_NAMES.map(value => [value, value])
+      : null;
     let identificationChoices = kind === "identification" && column.name === "label"
       ? Object.entries(IDENTIFICATION_TYPES)
       : null;
     if (identificationChoices && row && !IDENTIFICATION_TYPES[row.identifier_key]) {
       identificationChoices = [...identificationChoices, [row.identifier_key, row.label]];
     }
-    let parameterChoices = kind === "parameter" && column.name === "name"
-      ? Object.entries(DIAGNOSTIC_PARAMETER_LABELS)
-      : null;
-    if (parameterChoices && row && !DIAGNOSTIC_PARAMETER_LABELS[row.name]) {
-      parameterChoices = [...parameterChoices, [row.name, row.name]];
+    if (sensorChoices && row && !SENSOR_NAMES.includes(row.name)) {
+      sensorChoices.push([row.name, row.name]);
     }
-    const choices = info.boolean ? [[1,"Ja"],[0,"Nein"]] : identificationChoices || parameterChoices || info.choices || relationChoices || signalChoices || (column.name === "data_type" ? state.data_types.map(value => [value,value]) : null);
+    const choices = info.boolean ? [[1,"Ja"],[0,"Nein"]] : identificationChoices || sensorChoices || info.choices || relationChoices || signalChoices || (column.name === "data_type" ? state.data_types.map(value => [value,value]) : null);
     if (choices) {
       input = document.createElement("select");
       input.add(new Option(column.notnull ? "Bitte auswählen" : "Nicht angegeben", ""));
@@ -300,6 +315,7 @@ function openEditor(kind, row=null, fixed={}) {
     input.required = Boolean(column.notnull);
     const fallback = column.dflt_value === null ? "" : String(column.dflt_value).replace(/^'|'$/g, "");
     let value = row?.[column.name] ?? fallback;
+    if (!row && kind === "sensor" && column.name === "name") value = SENSOR_NAMES[0];
     if (!row && kind === "sensor" && column.name === "bitrate") value = 500000;
     if (kind === "identification" && column.name === "label" && row) value = row.identifier_key;
     if (state.hex_fields.includes(column.name) && value !== "") value = hex(value);
@@ -318,6 +334,9 @@ async function saveEditor(event) {
     const identifierKey = payload.label;
     payload.identifier_key = identifierKey;
     payload.label = IDENTIFICATION_TYPES[identifierKey] || row?.label || identifierKey;
+  }
+  if (kind === "parameter") {
+    payload.name = diagnosticParameterKey(payload.service, payload.did);
   }
   try {
     const result = await request(`/api/database/${table}${row ? "/" + row.id : ""}`, {
