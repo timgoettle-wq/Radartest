@@ -2,7 +2,7 @@
 
 let state = null;
 let selectedVehicleId = Number(new URLSearchParams(location.search).get("vehicle")) || null;
-let activeTab = "vehicle";
+let selectedSensorId = null;
 let editorState = null;
 
 const $ = id => document.getElementById(id);
@@ -187,50 +187,88 @@ function renderVehicleList() {
 
 function renderDetail() {
   const vehicle = find("vehicles", selectedVehicleId);
+  const sensors = related("ecus", "vehicle_id", vehicle.id);
+  if (!sensors.some(sensor => sensor.id === selectedSensorId)) {
+    selectedSensorId = sensors[0]?.id || null;
+  }
   $("breadcrumbs").innerHTML = `<button class="breadcrumb-link" data-action="back">Datenpflege</button><span>›</span><strong>${esc(vehicleName(vehicle))}</strong>`;
   $("pageTitle").textContent = vehicleName(vehicle);
-  $("pageSubtitle").textContent = `${related("ecus", "vehicle_id", vehicle.id).length} zugeordnete Radarsensoren · interne Vehicle-ID ${vehicle.id}`;
-  $("primaryAction").textContent = activeTab === "sensors" ? "+ Sensor hinzufügen" : activeTab === "diagnosis" ? "+ Diagnoseparameter" : "Fahrzeug bearbeiten";
-  $("primaryAction").dataset.action = activeTab === "sensors" ? "newSensor" : activeTab === "diagnosis" ? "newParameter" : "editVehicle";
-  $("primaryAction").disabled = state.locked || (activeTab === "diagnosis" && related("ecus", "vehicle_id", vehicle.id).length === 0);
-  document.querySelectorAll(".tab").forEach(tab => tab.classList.toggle("active", tab.dataset.tab === activeTab));
-  if (activeTab === "vehicle") renderVehicleTab(vehicle);
-  if (activeTab === "sensors") renderSensorsTab(vehicle);
-  if (activeTab === "diagnosis") renderDiagnosisTab(vehicle);
+  $("pageSubtitle").textContent = `${sensors.length} zugeordnete Radarsensoren · interne Vehicle-ID ${vehicle.id}`;
+  $("primaryAction").textContent = "Fahrzeug bearbeiten";
+  $("primaryAction").dataset.action = "editVehicle";
+  $("primaryAction").disabled = state.locked;
+  renderVehicleWorkspace(vehicle, sensors);
 }
 
 function fact(label, value) {
   return `<div class="fact"><span>${esc(label)}</span><strong>${esc(value ?? "—")}</strong></div>`;
 }
 
-function renderVehicleTab(vehicle) {
-  $("detailContent").innerHTML = `<div class="section-heading"><div><h2>Fahrzeugdaten</h2><p>Allgemeine Daten des ausgewählten Fahrzeugs.</p></div>${action("Bearbeiten", "editVehicle")}</div>
-    <div class="facts-grid">${fact("Hersteller", vehicle.manufacturer)}${fact("Modell", vehicle.model)}${fact("Baureihe", vehicle.generation)}${fact("Baujahr / Modelljahr", years(vehicle))}${fact("Interne Vehicle-ID", vehicle.id)}</div>
-    <div class="description-box"><span>Beschreibung</span><p>${esc(vehicle.description || "Keine Beschreibung hinterlegt.")}</p></div>
+function renderVehicleWorkspace(vehicle, sensors) {
+  const sensor = sensors.find(item => item.id === selectedSensorId) || null;
+  const sensorOptions = sensors.map(item =>
+    `<option value="${item.id}"${item.id === selectedSensorId ? " selected" : ""}>${esc(item.name)}</option>`
+  ).join("");
+
+  $("detailContent").innerHTML = `
+    <section class="vehicle-data-section">
+      <div class="section-heading"><div><h2>Fahrzeugdaten</h2><p>Allgemeine Daten des ausgewählten Fahrzeugs.</p></div></div>
+      <div class="facts-grid">
+        ${fact("Hersteller", vehicle.manufacturer)}
+        ${fact("Modell", vehicle.model)}
+        ${fact("Baureihe", vehicle.generation)}
+        ${fact("Baujahr / Modelljahr", years(vehicle))}
+      </div>
+      <div class="description-box"><span>Beschreibung</span><p>${esc(vehicle.description || "Keine Beschreibung hinterlegt.")}</p></div>
+    </section>
+
+    <section class="sensor-management-section">
+      <div class="sensor-selector-row">
+        <label class="sensor-selector"><span>Radarsensor auswählen</span>
+          <select id="sensorSelector" ${sensors.length ? "" : "disabled"}>
+            ${sensors.length ? sensorOptions : '<option value="">Kein Radarsensor vorhanden</option>'}
+          </select>
+        </label>
+        ${action("+ Radarsensor hinzufügen", "newSensor", null, "primary")}
+      </div>
+      ${sensor ? renderSensorWorkspace(sensor) : '<p class="empty-state">Lege einen Radarsensor an, um Hardware- und Softwarestände, DTC-Abfrage und Diagnosedaten zu konfigurieren.</p>'}
+    </section>
+
     <div class="danger-zone"><div><strong>Fahrzeug löschen</strong><p>Nur möglich, wenn keine Sensoren mehr zugeordnet sind.</p></div>${action("Fahrzeug löschen", "deleteVehicle", vehicle.id, "danger")}</div>`;
 }
 
-function sensorSummary(sensor) {
-  return `${esc(sensor.name)} · ${esc(sensor.channel)} · ${Number(sensor.bitrate).toLocaleString("de-DE")} bit/s`;
-}
+function renderSensorWorkspace(sensor) {
+  const identifications = related("identification_parameters", "ecu_id", sensor.id);
+  const dtcs = related("dtc_config", "ecu_id", sensor.id);
+  const parameters = related("diagnostic_parameters", "ecu_id", sensor.id);
 
-function renderSensorsTab(vehicle) {
-  const sensors = related("ecus", "vehicle_id", vehicle.id);
-  const cards = sensors.map(sensor => {
-    const identifications = related("identification_parameters", "ecu_id", sensor.id);
-    const dtcs = related("dtc_config", "ecu_id", sensor.id);
-    return `<article class="entity-card">
-      <div class="entity-header"><div><p class="eyebrow">Radarsensor</p><h2>${esc(sensor.name)}</h2><p>${esc(sensor.channel)} · ${esc(sensor.interface.toUpperCase())} / ${esc(sensor.transport.toUpperCase())}</p></div><div class="button-row">${action("Bearbeiten", "editSensor", sensor.id)}${action("Löschen", "deleteSensor", sensor.id, "danger ghost")}</div></div>
-      <div class="compact-facts">${fact("Request", hex(sensor.request_id))}${fact("Response", hex(sensor.response_id))}${fact("Bitrate", `${Number(sensor.bitrate).toLocaleString("de-DE")} bit/s`)}${fact("TX-Padding", sensor.tx_padding === null ? "—" : hex(sensor.tx_padding))}</div>
-      <div class="subsection"><div class="section-heading"><div><h3>Hardware- und Softwarestände</h3><p>Auslesbare Identifikationsmerkmale und bekannte Serienwerte.</p></div>${action("+ Kennung", "newIdentification", sensor.id)}</div>
-        ${identifications.length ? identifications.map(renderIdentification).join("") : `<p class="empty-inline">Noch keine Identifikationsmerkmale hinterlegt.</p>`}
-      </div>
-      <div class="subsection"><div class="section-heading"><div><h3>DTC-Abfrage</h3><p>Fehlerspeicherabfrage dieses Radarsensors.</p></div>${action("+ DTC-Abfrage", "newDtc", sensor.id)}</div>
-        ${dtcs.map(dtc => `<div class="list-row nested-card dtc-config-card"><div><strong>Service ${hex(dtc.service)}</strong><span>Subfunktion ${hex(dtc.subfunction)} · Statusmaske ${hex(dtc.status_mask)} · ${dtc.enabled ? "aktiv" : "inaktiv"}</span></div><div class="button-row">${action("Bearbeiten", "editDtc", dtc.id, "link-button")}${action("Löschen", "deleteDtc", dtc.id, "link-button danger-text")}</div></div>`).join("") || `<p class="empty-inline">Keine DTC-Abfrage konfiguriert.</p>`}
-      </div>
-    </article>`;
-  }).join("");
-  $("detailContent").innerHTML = `<div class="section-heading"><div><h2>Radarsensoren</h2><p>Sensorpositionen, Kommunikation, Versionskennungen und DTC-Abfragen.</p></div></div>${cards || `<p class="empty-state">Noch kein Radarsensor angelegt.</p>`}`;
+  return `<article class="entity-card sensor-workspace">
+    <div class="entity-header">
+      <div><p class="eyebrow">Ausgewählter Radarsensor</p><h2>${esc(sensor.name)}</h2><p>${esc(sensor.channel)} · ${esc(sensor.interface.toUpperCase())} / ${esc(sensor.transport.toUpperCase())}</p></div>
+      <div class="button-row">${action("Sensor bearbeiten", "editSensor", sensor.id)}${action("Sensor löschen", "deleteSensor", sensor.id, "danger ghost")}</div>
+    </div>
+    <div class="compact-facts">
+      ${fact("Request", hex(sensor.request_id))}
+      ${fact("Response", hex(sensor.response_id))}
+      ${fact("Bitrate", `${Number(sensor.bitrate).toLocaleString("de-DE")} bit/s`)}
+      ${fact("TX-Padding", sensor.tx_padding === null ? "—" : hex(sensor.tx_padding))}
+    </div>
+
+    <div class="subsection">
+      <div class="section-heading"><div><h3>Hardware- und Softwarestände</h3><p>Auslesbare Identifikationsmerkmale und bekannte Serienwerte.</p></div>${action("+ Kennung", "newIdentification", sensor.id)}</div>
+      ${identifications.length ? identifications.map(renderIdentification).join("") : '<p class="empty-inline">Noch keine Identifikationsmerkmale hinterlegt.</p>'}
+    </div>
+
+    <div class="subsection">
+      <div class="section-heading"><div><h3>DTC-Abfrage</h3><p>Fehlerspeicherabfrage dieses Radarsensors.</p></div>${action("+ DTC-Abfrage", "newDtc", sensor.id)}</div>
+      ${dtcs.map(dtc => `<div class="list-row nested-card dtc-config-card"><div><strong>Service ${hex(dtc.service)}</strong><span>Subfunktion ${hex(dtc.subfunction)} · Statusmaske ${hex(dtc.status_mask)} · ${dtc.enabled ? "aktiv" : "inaktiv"}</span></div><div class="button-row">${action("Bearbeiten", "editDtc", dtc.id, "link-button")}${action("Löschen", "deleteDtc", dtc.id, "link-button danger-text")}</div></div>`).join("") || '<p class="empty-inline">Keine DTC-Abfrage konfiguriert.</p>'}
+    </div>
+
+    <div class="subsection diagnosis-subsection">
+      <div class="section-heading"><div><h3>Diagnosedaten</h3><p>Diagnoseabfragen und zugehörige Signalfelder.</p></div>${action("+ Diagnoseabfrage", "newParameter", sensor.id)}</div>
+      ${parameters.length ? parameters.map(renderParameter).join("") : '<p class="empty-inline">Noch keine Diagnoseabfragen hinterlegt.</p>'}
+    </div>
+  </article>`;
 }
 
 function renderIdentification(item) {
@@ -240,21 +278,6 @@ function renderIdentification(item) {
     <div class="reference-list">${references.map(ref => `<div class="reference-row"><div><code>${esc(ref.value)}</code>${ref.note ? `<span>${esc(ref.note)}</span>` : ""}</div><div class="button-row">${action("Bearbeiten", "editReference", ref.id, "link-button")}${action("Löschen", "deleteReference", ref.id, "link-button danger-text")}</div></div>`).join("") || `<span class="muted">Noch kein zulässiger Referenzwert</span>`}</div>
     ${action("+ Referenzwert", "newReference", item.id, "small-button")}
   </div>`;
-}
-
-function renderDiagnosisTab(vehicle) {
-  const sensors = related("ecus", "vehicle_id", vehicle.id);
-  if (!sensors.length) {
-    $("detailContent").innerHTML = `<div class="empty-state"><h2>Zuerst einen Radarsensor anlegen</h2><p>Diagnoseparameter werden immer einem Sensor zugeordnet.</p>${action("+ Sensor hinzufügen", "newSensor")}</div>`;
-    return;
-  }
-  $("detailContent").innerHTML = `<div class="section-heading"><div><h2>Diagnose</h2><p>Diagnoseparameter und Signalfelder nach Radarsensor.</p></div></div>${sensors.map(sensor => {
-    const parameters = related("diagnostic_parameters", "ecu_id", sensor.id);
-    return `<article class="entity-card">
-      <div class="entity-header"><div><p class="eyebrow">${esc(sensor.name)}</p><h2>Diagnoseparameter</h2><p>${sensorSummary(sensor)}</p></div></div>
-      ${parameters.length ? parameters.map(renderParameter).join("") : `<p class="empty-inline">Noch keine Diagnoseparameter hinterlegt.</p>`}
-    </article>`;
-  }).join("")}`;
 }
 
 function renderParameter(parameter) {
@@ -344,7 +367,11 @@ async function saveEditor(event) {
     });
     if (kind === "vehicle" && !row) {
       selectedVehicleId = Number(result.id);
+      selectedSensorId = null;
       history.pushState({}, "", `/database?vehicle=${selectedVehicleId}`);
+    }
+    if (kind === "sensor" && !row) {
+      selectedSensorId = Number(result.id);
     }
     $("editorDialog").close();
     await load("Gespeichert. Die Konfiguration wird bei der nächsten Verbindung neu geladen.");
@@ -357,7 +384,11 @@ async function remove(table, id, label) {
     await request(`/api/database/${table}/${id}`, {method:"DELETE"});
     if (table === "vehicles") {
       selectedVehicleId = null;
+      selectedSensorId = null;
       history.pushState({}, "", "/database");
+    }
+    if (table === "ecus" && selectedSensorId === Number(id)) {
+      selectedSensorId = null;
     }
     await load("Eintrag gelöscht. Eine Sicherung wurde erstellt.");
   } catch (error) { message(error.message, true); }
@@ -366,7 +397,7 @@ async function remove(table, id, label) {
 function handleAction(actionName, id) {
   const vehicle = selectedVehicleId ? find("vehicles", selectedVehicleId) : null;
   const actions = {
-    back:() => { selectedVehicleId=null; activeTab="vehicle"; history.pushState({},"","/database"); render(); },
+    back:() => { selectedVehicleId=null; selectedSensorId=null; history.pushState({},"","/database"); render(); },
     newVehicle:() => openEditor("vehicle"), editVehicle:() => openEditor("vehicle", vehicle),
     deleteVehicle:() => remove("vehicles", id, "Fahrzeug"),
     newSensor:() => openEditor("sensor", null, {vehicle_id:selectedVehicleId}),
@@ -401,16 +432,21 @@ document.addEventListener("click", event => {
     render();
   }
 });
+document.addEventListener("change", event => {
+  if (event.target.id !== "sensorSelector") return;
+  selectedSensorId = Number(event.target.value) || null;
+  renderDetail();
+  document.querySelectorAll("button[data-action]").forEach(button => button.disabled = state.locked);
+});
 document.addEventListener("keydown", event => {
   const card = event.target.closest("[data-open-vehicle]");
   if (card && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); card.click(); }
 });
-document.querySelectorAll(".tab").forEach(tab => tab.onclick = () => { activeTab=tab.dataset.tab; renderDetail(); document.querySelectorAll("button[data-action]").forEach(button => button.disabled=state.locked); });
 [$("search"), $("yearFilter")].forEach(input => input.addEventListener("input", renderVehicleList));
 $("manufacturerFilter").onchange = renderVehicleList;
 $("reload").onclick = () => load();
 $("editorForm").onsubmit = saveEditor;
 $("cancelDialog").onclick = $("closeDialog").onclick = () => $("editorDialog").close();
-window.onpopstate = () => { selectedVehicleId=Number(new URLSearchParams(location.search).get("vehicle")) || null; render(); };
+window.onpopstate = () => { selectedVehicleId=Number(new URLSearchParams(location.search).get("vehicle")) || null; selectedSensorId=null; render(); };
 
 load();
