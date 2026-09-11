@@ -279,13 +279,15 @@ async function runQuickCheck() {
 }
 
 function formatFrequency(value) {
-    if (Array.isArray(value)) return value.join(" – ") + " GHz";
-    return value ?? "–";
+    if (value === null || value === undefined || value === "") return "–";
+    const formatted = Array.isArray(value) ? value.join(" – ") : String(value);
+    return /\\bGHz\\b/i.test(formatted) ? formatted : formatted + " GHz";
 }
 
 function formatPower(value) {
     if (value === null || value === undefined || value === "") return "–";
-    return `${value} dBm`;
+    const formatted = String(value);
+    return /\\bdBm\\b/i.test(formatted) ? formatted : formatted + " dBm";
 }
 
 function renderPrecheck(data) {
