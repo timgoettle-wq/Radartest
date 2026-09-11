@@ -71,6 +71,14 @@ function formatNumber(value, digits = 2, unit = "") {
     return Number.isFinite(number) ? number.toFixed(digits).replace(".", ",") + unit : "–";
 }
 
+function formatPrecheckValue(value, unit) {
+    if (value === null || value === undefined || value === "") return "–";
+    const formatted = Array.isArray(value) ? value.join(" – ") : String(value);
+    return formatted.toLocaleLowerCase().includes(unit.toLocaleLowerCase())
+        ? formatted
+        : formatted + " " + unit;
+}
+
 function testTypeLabel(type) {
     return type === "dynamic" ? "Dynamische Messung" : type === "static" ? "Statische Messung" : type || "Unbekannte Messung";
 }
@@ -269,8 +277,8 @@ function renderPrecheck(precheck, status) {
     values.className = "compact-facts";
     values.append(
         compactFact("Polarisation", precheck.polarization ?? "–"),
-        compactFact("Frequenzbereich", Array.isArray(precheck.frequency_range) ? precheck.frequency_range.join(" – ") : precheck.frequency_range ?? "–"),
-        compactFact("Leistung", precheck.power ?? "–")
+        compactFact("Frequenzbereich", formatPrecheckValue(precheck.frequency_range, "GHz")),
+        compactFact("Leistung", formatPrecheckValue(precheck.power, "dBm"))
     );
     content.append(values);
 }
