@@ -1,5 +1,7 @@
 """Demo: Erkennungsgrenze des Fahrzeugradars ueber die Daempfung bestimmen.
 
+1db Attenuation = 4 dB weniger power am Empfänger.
+
 Der RadEsT simuliert ein statisches Ziel. Die Daempfung wird schrittweise
 erhoeht und die vom Fahrzeug gemeldete Objektdistanz mehrfach ausgelesen.
 Alle Einzelmessungen werden als CSV unter ``test_runs`` gespeichert.
