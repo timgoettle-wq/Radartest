@@ -290,6 +290,25 @@ function formatPower(value) {
     return /\\bdBm\\b/i.test(formatted) ? formatted : formatted + " dBm";
 }
 
+function formatPolarization(value) {
+    if (value === null || value === undefined || value === "") return "–";
+
+    const raw = Array.isArray(value) ? value.join(", ") : String(value).trim();
+    const code = (Array.isArray(value) ? String(value[0]) : raw.split(",")[0]).trim().toUpperCase();
+    const labels = {
+        "5": "Horizontal",
+        "8": "Vertikal",
+        "7": "+45°",
+        "6": "−45°",
+        "H": "Horizontal",
+        "V": "Vertikal",
+        "P45": "+45°",
+        "M45": "−45°"
+    };
+
+    return labels[code] || raw;
+}
+
 function renderPrecheck(data) {
     const skipped = Boolean(data.skipped);
     $("precheckResult").hidden = false;
@@ -299,7 +318,7 @@ function renderPrecheck(data) {
         : "Precheck abgeschlossen – RadEsT-Werte wurden erfasst.";
     $("precheckConnection").textContent = skipped ? "Nicht geprüft" : "✓ Verbunden";
     $("frequency").textContent = skipped ? "Übersprungen" : formatFrequency(data.frequency_range);
-    $("polarization").textContent = skipped ? "Übersprungen" : (data.polarization ?? "–");
+    $("polarization").textContent = skipped ? "Übersprungen" : formatPolarization(data.polarization);
     $("power").textContent = skipped ? "Übersprungen" : formatPower(data.power);
 }
 
