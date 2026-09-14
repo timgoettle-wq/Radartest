@@ -79,6 +79,25 @@ function formatPrecheckValue(value, unit) {
         : formatted + " " + unit;
 }
 
+function formatPolarization(value) {
+    if (value === null || value === undefined || value === "") return "–";
+
+    const raw = Array.isArray(value) ? value.join(", ") : String(value).trim();
+    const code = (Array.isArray(value) ? String(value[0]) : raw.split(",")[0]).trim().toUpperCase();
+    const labels = {
+        "5": "Horizontal",
+        "8": "Vertikal",
+        "7": "+45°",
+        "6": "−45°",
+        "H": "Horizontal",
+        "V": "Vertikal",
+        "P45": "+45°",
+        "M45": "−45°"
+    };
+
+    return labels[code] || raw;
+}
+
 function testTypeLabel(type) {
     return type === "dynamic" ? "Dynamische Messung" : type === "static" ? "Statische Messung" : type || "Unbekannte Messung";
 }
@@ -276,7 +295,7 @@ function renderPrecheck(precheck, status) {
     const values = document.createElement("div");
     values.className = "compact-facts";
     values.append(
-        compactFact("Polarisation", precheck.polarization ?? "–"),
+        compactFact("Polarisation", formatPolarization(precheck.polarization)),
         compactFact("Frequenzbereich", formatPrecheckValue(precheck.frequency_range, "GHz")),
         compactFact("Leistung", formatPrecheckValue(precheck.power, "dBm"))
     );
