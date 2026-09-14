@@ -205,7 +205,6 @@ def main():
         original_attenuation_db = controller.radest.system_get_attenuation()
         controller.radest.system_set_attenuation(START_ATTENUATION_DB)
 
-        print("Precheck wird ausgefuehrt ...")
         controller.run_precheck()
 
         configuration = controller.start_static_measurement(TARGET_DISTANCE_M)
