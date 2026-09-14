@@ -1,9 +1,9 @@
 """Standalone-Demo fuer RadEsT-/AEB-Versuche auf dem Rollenpruefstand.
 
-Das Skript verwendet absichtlich NICHT die Fahrzeugdatenbank. Es steuert den
-RadEsT, zeichnet den CAN-Bus passiv auf und fragt zusaetzlich eine lokal
-konfigurierte UDS-DIDs ueber Linux ISO-TP ab. Die vorlaeufigen
-Signaldefinitionen werden direkt im Konfigurationsblock gepflegt.
+Das Skript schreibt nichts in die Fahrzeugdatenbank. Es liest lediglich die
+Radar-Diagnosekonfiguration des beim Start angegebenen Fahrzeugs. Die
+ESP-/Bremswerte werden unabhaengig davon aus den lokal konfigurierten UDS-DIDs
+gelesen. Der CAN-Bus wird zusaetzlich passiv aufgezeichnet.
 
 Start aus dem Projektordner:
     python demo_scripte/aeb_pruefstand_test.py
@@ -29,6 +29,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from diagnostics.vehicle import VehicleDiagnostic
 from radest.device import RadestDevice
 
 
@@ -61,6 +62,7 @@ DIAGNOSTIC_DIDS = (0x2001, 0x2002)
 DIAGNOSTIC_INTERVAL_S = 0.10
 DIAGNOSTIC_TIMEOUT_S = 0.50
 DIAGNOSTIC_TX_PADDING = 0x00
+RADAR_INTERVAL_S = 0.05
 
 # start_byte zaehlt jeweils ab dem ersten Datenbyte NACH "62 DID_H DID_L".
 # Solange Byteposition und Umrechnung noch unbekannt sind, bleibt start_byte
@@ -127,16 +129,6 @@ DIAGNOSTIC_SIGNALS = {
         "offset": 0.0,
         "unit": "bar",
     },
-    "brake_vacuum": {
-        "did": 0x2002,
-        "start_byte": None,
-        "length": 2,
-        "byte_order": "big",
-        "signed": True,
-        "factor": 1.0,
-        "offset": 0.0,
-        "unit": "bar",
-    },
     "steering_angle": {
         "did": 0x2002,
         "start_byte": 12,
@@ -180,116 +172,9 @@ DIAGNOSTIC_SIGNALS = {
 }
 
 
-# ======================================================
-# VORLAEUFIGE LIVE-SIGNALE
-# ======================================================
-
-# can_id=None bedeutet: Signal noch nicht konfiguriert. Sobald ein Signal
-# reverse-engineert ist, CAN-ID und Byteauswertung hier eintragen.
-#
-# Die erste Version unterstuetzt byteweise ausgerichtete Signale:
-#   can_id:      z. B. 0x353
-#   start_byte:  0 = erstes Datenbyte
-#   length:      Anzahl Bytes
-#   byte_order:  "big" oder "little"
-#   signed:      True oder False
-#   factor:      physikalischer Wert = Rohwert * Faktor + Offset
-#   offset:      physikalischer Offset
-#   unit:        nur fuer die Anzeige
-
-SIGNALS = {
-    "vehicle_speed": {
-        "can_id": None,
-        "start_byte": 0,
-        "length": 2,
-        "byte_order": "big",
-        "signed": False,
-        "factor": 0.01,
-        "offset": 0.0,
-        "unit": "km/h",
-    },
-    "wheel_speed_fl": {
-        "can_id": None,
-        "start_byte": 0,
-        "length": 2,
-        "byte_order": "big",
-        "signed": False,
-        "factor": 0.01,
-        "offset": 0.0,
-        "unit": "km/h",
-    },
-    "wheel_speed_fr": {
-        "can_id": None,
-        "start_byte": 0,
-        "length": 2,
-        "byte_order": "big",
-        "signed": False,
-        "factor": 0.01,
-        "offset": 0.0,
-        "unit": "km/h",
-    },
-    "wheel_speed_rl": {
-        "can_id": None,
-        "start_byte": 0,
-        "length": 2,
-        "byte_order": "big",
-        "signed": False,
-        "factor": 0.01,
-        "offset": 0.0,
-        "unit": "km/h",
-    },
-    "wheel_speed_rr": {
-        "can_id": None,
-        "start_byte": 0,
-        "length": 2,
-        "byte_order": "big",
-        "signed": False,
-        "factor": 0.01,
-        "offset": 0.0,
-        "unit": "km/h",
-    },
-    "radar_distance": {
-        "can_id": None,
-        "start_byte": 0,
-        "length": 2,
-        "byte_order": "big",
-        "signed": False,
-        "factor": 0.1,
-        "offset": 0.0,
-        "unit": "m",
-    },
-    "radar_relative_speed": {
-        "can_id": None,
-        "start_byte": 0,
-        "length": 2,
-        "byte_order": "big",
-        "signed": True,
-        "factor": 0.01,
-        "offset": 0.0,
-        "unit": "km/h",
-    },
-    "brake_pressure": {
-        "can_id": None,
-        "start_byte": 0,
-        "length": 2,
-        "byte_order": "big",
-        "signed": False,
-        "factor": 0.1,
-        "offset": 0.0,
-        "unit": "bar",
-    },
-    "aeb_state": {
-        "can_id": None,
-        "start_byte": 0,
-        "length": 1,
-        "byte_order": "big",
-        "signed": False,
-        "factor": 1.0,
-        "offset": 0.0,
-        "unit": "",
-    },
-}
-
+# Es sind keine lokal dekodierten zyklischen CAN-Signale konfiguriert.
+# Die Roh-CAN-Aufzeichnung bleibt unabhaengig davon aktiv.
+SIGNALS = {}
 
 CAN_FRAME = struct.Struct("=IB3x8s")
 CAN_EFF_MASK = 0x1FFFFFFF
@@ -314,6 +199,21 @@ def ask_float(prompt, default, minimum=None):
             print(f"Der Wert muss mindestens {minimum:g} betragen.")
             continue
         return value
+
+
+def ask_vehicle_id():
+    while True:
+        answer = input("Vehicle-ID aus der Datenbank: ").strip()
+        try:
+            vehicle_id = int(answer)
+        except ValueError:
+            print("Bitte eine ganzzahlige Vehicle-ID eingeben.")
+            continue
+
+        if vehicle_id <= 0:
+            print("Die Vehicle-ID muss groesser als 0 sein.")
+            continue
+        return vehicle_id
 
 
 def ask_scenario():
@@ -696,6 +596,120 @@ class StandaloneUdsMonitor:
             self.socket = None
 
 
+class DatabaseRadarMonitor:
+    """Liest nur die Radar-Livesignale der angegebenen Vehicle-ID."""
+
+    SIGNAL_MAPPING = {
+        "distance": "radar_distance",
+        "relative_speed": "radar_relative_speed",
+    }
+
+    def __init__(self, vehicle_id):
+        self.vehicle_id = vehicle_id
+        self.diagnostic = VehicleDiagnostic(vehicle_id)
+        self.stop_event = threading.Event()
+        self.lock = threading.Lock()
+        self.thread = None
+        self.latest_values = {}
+        self.latest_received_at = None
+        self.latest_status = "noch_nicht_abgefragt"
+        self.latest_error = None
+        self.error = None
+
+        available_signals = set(self.diagnostic.get_available_signals())
+        self.signal_names = [
+            name
+            for name in self.SIGNAL_MAPPING
+            if name in available_signals
+        ]
+        if not self.signal_names:
+            raise ValueError(
+                f"Fuer Vehicle-ID {vehicle_id} ist weder 'distance' noch "
+                "'relative_speed' konfiguriert."
+            )
+
+        # Nur die Diagnoseparameter der benoetigten Radarsignale verbinden.
+        # DTC- und Identifikationskonfigurationen werden im Demo nicht verwendet.
+        unique_parameters = {}
+        for signal_name in self.signal_names:
+            parameter = self.diagnostic.signal_map[signal_name]
+            unique_parameters[parameter["id"]] = parameter
+        self.diagnostic.parameters = list(unique_parameters.values())
+        self.diagnostic.dtc_configs = []
+        self.diagnostic.identification_parameters = []
+
+    def start(self):
+        self.diagnostic.connect()
+        self.thread = threading.Thread(
+            target=self._read_loop,
+            name="DatabaseRadarMonitor",
+            daemon=True,
+        )
+        self.thread.start()
+
+    @staticmethod
+    def _extract_value(decoded):
+        if isinstance(decoded, dict):
+            return decoded.get("value")
+        return decoded
+
+    def _read_loop(self):
+        try:
+            while not self.stop_event.is_set():
+                started = time.perf_counter()
+                try:
+                    result = self.diagnostic.read_signals(self.signal_names)
+                    values = {
+                        self.SIGNAL_MAPPING[name]: self._extract_value(result[name])
+                        for name in self.signal_names
+                    }
+                    received_at = time.perf_counter()
+                    with self.lock:
+                        self.latest_values = values
+                        self.latest_received_at = received_at
+                        self.latest_status = "ok"
+                        self.latest_error = None
+                except Exception as error:
+                    with self.lock:
+                        self.latest_status = "lesefehler"
+                        self.latest_error = str(error)
+
+                remaining = RADAR_INTERVAL_S - (time.perf_counter() - started)
+                if remaining > 0:
+                    self.stop_event.wait(remaining)
+        except Exception as error:
+            self.error = error
+
+    def snapshot(self):
+        now = time.perf_counter()
+        with self.lock:
+            values = dict(self.latest_values)
+            received_at = self.latest_received_at
+            status = self.latest_status
+            error_text = self.latest_error
+
+        age_s = None if received_at is None else now - received_at
+        snapshot = {
+            "radar_distance": None,
+            "radar_distance_age_s": age_s,
+            "radar_relative_speed": None,
+            "radar_relative_speed_age_s": age_s,
+            "radar_diagnostic_status": status,
+            "radar_diagnostic_error": error_text,
+        }
+        if age_s is not None and age_s <= MAX_SIGNAL_AGE_S:
+            snapshot.update(values)
+        return snapshot
+
+    def stop(self):
+        self.stop_event.set()
+        if self.thread is not None:
+            self.thread.join(timeout=1.5)
+        self.diagnostic.disconnect()
+        if self.thread is not None and self.thread.is_alive():
+            self.thread.join(timeout=0.2)
+
+
 def expected_dynamic_distance(scenario, movement_elapsed_s):
     start = scenario["start_distance_m"]
     end = scenario["end_distance_m"]
@@ -707,21 +721,18 @@ def expected_dynamic_distance(scenario, movement_elapsed_s):
 def configured_signal_text(values):
     parts = []
     preferred = (
-        "vehicle_speed",
         "wheel_speed_fl",
         "wheel_speed_fr",
         "wheel_speed_rl",
         "wheel_speed_rr",
         "radar_distance",
+        "radar_relative_speed",
         "main_brake_pressure",
         "brake_circuit_2_pressure",
-        "brake_vacuum",
         "steering_angle",
         "longitudinal_acceleration",
         "lateral_acceleration",
         "yaw_rate",
-        "brake_pressure",
-        "aeb_state",
     )
 
     for name in preferred:
@@ -729,7 +740,11 @@ def configured_signal_text(values):
         if value is None:
             continue
         definition = SIGNALS.get(name) or DIAGNOSTIC_SIGNALS.get(name) or {}
-        unit = definition.get("unit", "")
+        radar_units = {
+            "radar_distance": "m",
+            "radar_relative_speed": "km/h",
+        }
+        unit = definition.get("unit", radar_units.get(name, ""))
         parts.append(f"{name}={value:.2f}{(' ' + unit) if unit else ''}")
 
     if parts:
@@ -753,6 +768,7 @@ def write_sample(
     rows,
     monitor,
     diagnostic_monitor,
+    radar_monitor,
     origin,
     phase,
     target_distance_m,
@@ -761,6 +777,8 @@ def write_sample(
     values = monitor.snapshot()
     if diagnostic_monitor is not None:
         values.update(diagnostic_monitor.snapshot())
+    if radar_monitor is not None:
+        values.update(radar_monitor.snapshot())
     row = {
         "timestamp_unix_ns": time.time_ns(),
         "elapsed_s": time.perf_counter() - origin,
@@ -779,6 +797,7 @@ def sample_for_duration(
     rows,
     monitor,
     diagnostic_monitor,
+    radar_monitor,
     origin,
     duration_s,
     phase,
@@ -801,6 +820,7 @@ def sample_for_duration(
             rows,
             monitor,
             diagnostic_monitor,
+            radar_monitor,
             origin,
             phase,
             target_distance,
@@ -861,7 +881,7 @@ def create_diagram(rows, output_file):
     axes[0].legend()
     axes[0].grid(True, alpha=0.35)
 
-    speed_names = ("vehicle_speed", "wheel_speed_fl", "wheel_speed_fr", "wheel_speed_rl", "wheel_speed_rr")
+    speed_names = ("wheel_speed_fl", "wheel_speed_fr", "wheel_speed_rl", "wheel_speed_rr")
     for name in speed_names:
         values = [row.get(name) for row in rows]
         if any(value is not None for value in values):
@@ -874,9 +894,7 @@ def create_diagram(rows, output_file):
     for name in (
         "main_brake_pressure",
         "brake_circuit_2_pressure",
-        "brake_vacuum",
-        "brake_pressure",
-        "aeb_state",
+
     ):
         values = [row.get(name) for row in rows]
         if any(value is not None for value in values):
@@ -895,6 +913,7 @@ def create_diagram(rows, output_file):
 
 
 def main():
+    vehicle_id = ask_vehicle_id()
     scenario = ask_scenario()
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     output_directory = PROJECT_ROOT / "test_runs" / f"aeb_bench_{timestamp}"
@@ -908,6 +927,15 @@ def main():
     signal_columns = []
     for signal_name in SIGNALS:
         signal_columns.extend((signal_name, f"{signal_name}_age_s"))
+
+    radar_columns = [
+        "radar_distance",
+        "radar_distance_age_s",
+        "radar_relative_speed",
+        "radar_relative_speed_age_s",
+        "radar_diagnostic_status",
+        "radar_diagnostic_error",
+    ]
 
     diagnostic_columns = []
     for did in DIAGNOSTIC_DIDS:
@@ -933,6 +961,7 @@ def main():
         "radest_target_distance_m",
         "scenario_velocity_kmh",
         *signal_columns,
+        *radar_columns,
         *diagnostic_columns,
     ]
 
@@ -956,6 +985,7 @@ def main():
     radest = RadestDevice(RADEST_IP, RADEST_PORT)
     monitor = None
     diagnostic_monitor = None
+    radar_monitor = None
     connected = False
     original_distance = None
     scenario_thread = None
@@ -975,6 +1005,9 @@ def main():
 
         configure_radest_scenario(radest, scenario)
 
+        radar_monitor = DatabaseRadarMonitor(vehicle_id)
+        radar_monitor.start()
+
         monitor = PassiveCanMonitor(CAN_CHANNEL, raw_can_csv, origin)
         monitor.start()
 
@@ -984,6 +1017,10 @@ def main():
 
         print(f"\nAusgabeordner: {output_directory}")
         print("Der komplette CAN-Bus wird passiv in can_raw.csv aufgezeichnet.")
+        print(
+            f"Radar-Diagnose aus Datenbank aktiv: Vehicle-ID {vehicle_id}, "
+            f"Signale {', '.join(radar_monitor.signal_names)}."
+        )
         if diagnostic_monitor is not None:
             did_text = ", ".join(f"0x{did:04X}" for did in DIAGNOSTIC_DIDS)
             print(
@@ -1006,6 +1043,7 @@ def main():
                     rows,
                     monitor,
                     diagnostic_monitor,
+                    radar_monitor,
                     origin,
                     scenario["duration_s"],
                     "constant",
@@ -1019,6 +1057,7 @@ def main():
                     rows,
                     monitor,
                     diagnostic_monitor,
+                    radar_monitor,
                     origin,
                     scenario["pre_hold_s"],
                     "pre_hold",
@@ -1044,6 +1083,7 @@ def main():
                     rows,
                     monitor,
                     diagnostic_monitor,
+                    radar_monitor,
                     origin,
                     movement_duration,
                     "moving",
@@ -1056,6 +1096,7 @@ def main():
                     rows,
                     monitor,
                     diagnostic_monitor,
+                    radar_monitor,
                     origin,
                     scenario["post_hold_s"],
                     "post_hold",
@@ -1073,6 +1114,8 @@ def main():
             raise RuntimeError(f"CAN-Aufzeichnung fehlgeschlagen: {monitor.error}")
         if diagnostic_monitor is not None and diagnostic_monitor.error is not None:
             raise RuntimeError(f"Diagnoseaufzeichnung fehlgeschlagen: {diagnostic_monitor.error}")
+        if radar_monitor is not None and radar_monitor.error is not None:
+            raise RuntimeError(f"Radar-Diagnose fehlgeschlagen: {radar_monitor.error}")
 
         diagram = create_diagram(rows, diagram_file)
         print("\nTest abgeschlossen.")
@@ -1091,6 +1134,8 @@ def main():
             diagnostic_monitor.stop()
         if monitor is not None:
             monitor.stop()
+        if radar_monitor is not None:
+            radar_monitor.stop()
 
         # Waehrend SCENARIO:TRIGGER noch blockiert, darf derselbe Socket nicht
         # fuer einen weiteren Befehl verwendet werden.
