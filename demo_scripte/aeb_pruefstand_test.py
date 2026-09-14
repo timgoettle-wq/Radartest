@@ -677,6 +677,13 @@ class StandaloneUdsMonitor:
                 if payload is not None
                 else None
             )
+            if name in SIGNALS:
+                received_at = received_times.get(did)
+                values[f"{name}_age_s"] = (
+                    None
+                    if received_at is None
+                    else now - received_at
+                )
 
         return values
 
