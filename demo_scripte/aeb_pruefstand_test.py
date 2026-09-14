@@ -2,14 +2,14 @@
 
 Das Skript verwendet absichtlich NICHT die Fahrzeugdatenbank. Es steuert den
 RadEsT, zeichnet den CAN-Bus passiv auf und fragt zusaetzlich eine lokal
-konfigurierte UDS-DID ueber Linux ISO-TP ab. Die vorlaeufigen
+konfigurierte UDS-DIDs ueber Linux ISO-TP ab. Die vorlaeufigen
 Signaldefinitionen werden direkt im Konfigurationsblock gepflegt.
 
 Start aus dem Projektordner:
     python demo_scripte/aeb_pruefstand_test.py
 
 Wichtig: Dieses Skript ersetzt weder die Pruefstandsfreigabe noch einen
-hardwareseitigen Not-Aus. Es sendet die unten konfigurierte Diagnoseanfrage,
+hardwareseitigen Not-Aus. Es sendet die unten konfigurierten Diagnoseanfragen,
 steuert den Rollenpruefstand aber nicht.
 """
 
@@ -50,24 +50,65 @@ MAX_SIGNAL_AGE_S = 0.5
 # LOKALE UDS-DIAGNOSE (KEINE DATENBANK)
 # ======================================================
 
-# ESP-Sensordaten aus dem mitgeschnittenen Diagnosetest:
-#   Request:  0x7E2  22 20 02
-#   Response: 0x7EA  62 20 02 ...
+# ESP-Diagnosedaten aus den mitgeschnittenen Diagnosetests:
+#   0x7E2  22 20 01 -> 0x7EA  62 20 01 ...  (Raddrehzahlen)
+#   0x7E2  22 20 02 -> 0x7EA  62 20 02 ...  (Brems-/ESP-Sensoren)
 DIAGNOSTIC_ENABLED = True
 DIAGNOSTIC_REQUEST_ID = 0x7E2
 DIAGNOSTIC_RESPONSE_ID = 0x7EA
 DIAGNOSTIC_SERVICE = 0x22
-DIAGNOSTIC_DID = 0x2002
+DIAGNOSTIC_DIDS = (0x2001, 0x2002)
 DIAGNOSTIC_INTERVAL_S = 0.10
 DIAGNOSTIC_TIMEOUT_S = 0.50
 DIAGNOSTIC_TX_PADDING = 0x00
 
-# start_byte zaehlt ab dem ersten Datenbyte NACH "62 20 02".
+# start_byte zaehlt jeweils ab dem ersten Datenbyte NACH "62 DID_H DID_L".
 # Solange Byteposition und Umrechnung noch unbekannt sind, bleibt start_byte
-# auf None. Die komplette Antwort wird trotzdem in diagnostic_raw.csv
-# gespeichert und kann fuer das Reverse Engineering verglichen werden.
+# auf None. Die kompletten Antworten werden trotzdem in diagnostic_raw.csv
+# gespeichert und koennen fuer das Reverse Engineering verglichen werden.
 DIAGNOSTIC_SIGNALS = {
+    "wheel_speed_fl": {
+        "did": 0x2001,
+        "start_byte": None,
+        "length": 2,
+        "byte_order": "big",
+        "signed": False,
+        "factor": 1.0,
+        "offset": 0.0,
+        "unit": "km/h",
+    },
+    "wheel_speed_fr": {
+        "did": 0x2001,
+        "start_byte": None,
+        "length": 2,
+        "byte_order": "big",
+        "signed": False,
+        "factor": 1.0,
+        "offset": 0.0,
+        "unit": "km/h",
+    },
+    "wheel_speed_rl": {
+        "did": 0x2001,
+        "start_byte": None,
+        "length": 2,
+        "byte_order": "big",
+        "signed": False,
+        "factor": 1.0,
+        "offset": 0.0,
+        "unit": "km/h",
+    },
+    "wheel_speed_rr": {
+        "did": 0x2001,
+        "start_byte": None,
+        "length": 2,
+        "byte_order": "big",
+        "signed": False,
+        "factor": 1.0,
+        "offset": 0.0,
+        "unit": "km/h",
+    },
     "main_brake_pressure": {
+        "did": 0x2002,
         "start_byte": 15,
         "length": 2,
         "byte_order": "big",
@@ -77,6 +118,7 @@ DIAGNOSTIC_SIGNALS = {
         "unit": "bar",
     },
     "brake_circuit_2_pressure": {
+        "did": 0x2002,
         "start_byte": 18,
         "length": 2,
         "byte_order": "big",
@@ -86,6 +128,7 @@ DIAGNOSTIC_SIGNALS = {
         "unit": "bar",
     },
     "brake_vacuum": {
+        "did": 0x2002,
         "start_byte": None,
         "length": 2,
         "byte_order": "big",
@@ -95,6 +138,7 @@ DIAGNOSTIC_SIGNALS = {
         "unit": "bar",
     },
     "steering_angle": {
+        "did": 0x2002,
         "start_byte": 12,
         "length": 2,
         "byte_order": "big",
@@ -104,6 +148,7 @@ DIAGNOSTIC_SIGNALS = {
         "unit": "deg",
     },
     "longitudinal_acceleration": {
+        "did": 0x2002,
         "start_byte": 3,
         "length": 2,
         "byte_order": "big",
@@ -113,6 +158,7 @@ DIAGNOSTIC_SIGNALS = {
         "unit": "m/s^2",
     },
     "lateral_acceleration": {
+        "did": 0x2002,
         "start_byte": 6,
         "length": 2,
         "byte_order": "big",
@@ -122,6 +168,7 @@ DIAGNOSTIC_SIGNALS = {
         "unit": "m/s^2",
     },
     "yaw_rate": {
+        "did": 0x2002,
         "start_byte": 9,
         "length": 2,
         "byte_order": "big",
@@ -429,7 +476,7 @@ class PassiveCanMonitor:
 
 
 class StandaloneUdsMonitor:
-    """Fragt eine fest konfigurierte DID zyklisch ohne Datenbank ab."""
+    """Fragt mehrere lokal konfigurierte DIDs zyklisch ohne Datenbank ab."""
 
     def __init__(self, channel, raw_csv_file, time_origin):
         self.channel = channel
@@ -439,10 +486,13 @@ class StandaloneUdsMonitor:
         self.thread = None
         self.stop_event = threading.Event()
         self.lock = threading.Lock()
-        self.latest_response = None
-        self.latest_received_at = None
-        self.latest_status = "noch_nicht_abgefragt"
-        self.latest_error = None
+        self.latest_responses = {}
+        self.latest_received_at = {}
+        self.latest_status = {
+            did: "noch_nicht_abgefragt"
+            for did in DIAGNOSTIC_DIDS
+        }
+        self.latest_errors = {}
         self.error = None
 
     def start(self):
@@ -480,7 +530,7 @@ class StandaloneUdsMonitor:
         self.thread.start()
 
     @staticmethod
-    def _validate_response(response):
+    def _validate_response(response, expected_did):
         if not response:
             return "leer", "Leere Diagnoseantwort"
 
@@ -496,20 +546,12 @@ class StandaloneUdsMonitor:
             return "ungueltig", f"Service 0x{response[0]:02X} statt 0x{expected_service:02X}"
 
         response_did = (response[1] << 8) | response[2]
-        if response_did != DIAGNOSTIC_DID:
-            return "ungueltig", f"DID 0x{response_did:04X} statt 0x{DIAGNOSTIC_DID:04X}"
+        if response_did != expected_did:
+            return "ungueltig", f"DID 0x{response_did:04X} statt 0x{expected_did:04X}"
 
         return "ok", None
 
     def _request_loop(self):
-        request = bytes(
-            [
-                DIAGNOSTIC_SERVICE,
-                (DIAGNOSTIC_DID >> 8) & 0xFF,
-                DIAGNOSTIC_DID & 0xFF,
-            ]
-        )
-
         try:
             with self.raw_csv_file.open("w", newline="", encoding="utf-8") as file:
                 writer = csv.DictWriter(
@@ -530,48 +572,60 @@ class StandaloneUdsMonitor:
                 writer.writeheader()
 
                 while not self.stop_event.is_set():
-                    started = time.perf_counter()
-                    response = None
-                    status = "fehler"
-                    error_text = None
+                    cycle_started = time.perf_counter()
 
-                    try:
-                        self.socket.send(request)
-                        response = self.socket.recv(4095)
-                        status, error_text = self._validate_response(response)
-                    except socket.timeout:
-                        status = "timeout"
-                        error_text = "Keine Diagnoseantwort innerhalb des Timeouts"
-                    except OSError as error:
+                    for did in DIAGNOSTIC_DIDS:
                         if self.stop_event.is_set():
                             break
-                        status = "socket_fehler"
-                        error_text = str(error)
 
-                    received_at = time.perf_counter()
-                    with self.lock:
-                        if response is not None:
-                            self.latest_response = response
-                            self.latest_received_at = received_at
-                        self.latest_status = status
-                        self.latest_error = error_text
+                        request = bytes(
+                            [
+                                DIAGNOSTIC_SERVICE,
+                                (did >> 8) & 0xFF,
+                                did & 0xFF,
+                            ]
+                        )
+                        response = None
+                        status = "fehler"
+                        error_text = None
 
-                    writer.writerow(
-                        {
-                            "timestamp_unix_ns": time.time_ns(),
-                            "elapsed_s": f"{received_at - self.time_origin:.6f}",
-                            "request_id": f"0x{DIAGNOSTIC_REQUEST_ID:X}",
-                            "response_id": f"0x{DIAGNOSTIC_RESPONSE_ID:X}",
-                            "service": f"0x{DIAGNOSTIC_SERVICE:02X}",
-                            "did": f"0x{DIAGNOSTIC_DID:04X}",
-                            "status": status,
-                            "response_hex": response.hex(" ").upper() if response else "",
-                            "error": error_text or "",
-                        }
-                    )
-                    file.flush()
+                        try:
+                            self.socket.send(request)
+                            response = self.socket.recv(4095)
+                            status, error_text = self._validate_response(response, did)
+                        except socket.timeout:
+                            status = "timeout"
+                            error_text = "Keine Diagnoseantwort innerhalb des Timeouts"
+                        except OSError as error:
+                            if self.stop_event.is_set():
+                                break
+                            status = "socket_fehler"
+                            error_text = str(error)
 
-                    remaining = DIAGNOSTIC_INTERVAL_S - (time.perf_counter() - started)
+                        received_at = time.perf_counter()
+                        with self.lock:
+                            if response is not None:
+                                self.latest_responses[did] = response
+                                self.latest_received_at[did] = received_at
+                            self.latest_status[did] = status
+                            self.latest_errors[did] = error_text
+
+                        writer.writerow(
+                            {
+                                "timestamp_unix_ns": time.time_ns(),
+                                "elapsed_s": f"{received_at - self.time_origin:.6f}",
+                                "request_id": f"0x{DIAGNOSTIC_REQUEST_ID:X}",
+                                "response_id": f"0x{DIAGNOSTIC_RESPONSE_ID:X}",
+                                "service": f"0x{DIAGNOSTIC_SERVICE:02X}",
+                                "did": f"0x{did:04X}",
+                                "status": status,
+                                "response_hex": response.hex(" ").upper() if response else "",
+                                "error": error_text or "",
+                            }
+                        )
+                        file.flush()
+
+                    remaining = DIAGNOSTIC_INTERVAL_S - (time.perf_counter() - cycle_started)
                     if remaining > 0:
                         self.stop_event.wait(remaining)
 
@@ -581,25 +635,48 @@ class StandaloneUdsMonitor:
     def snapshot(self):
         now = time.perf_counter()
         with self.lock:
-            response = self.latest_response
-            received_at = self.latest_received_at
-            status = self.latest_status
-            error_text = self.latest_error
+            responses = dict(self.latest_responses)
+            received_times = dict(self.latest_received_at)
+            statuses = dict(self.latest_status)
+            errors = dict(self.latest_errors)
 
-        age_s = None if received_at is None else now - received_at
-        values = {
-            "diagnostic_response_hex": response.hex(" ").upper() if response else None,
-            "diagnostic_response_age_s": age_s,
-            "diagnostic_status": status,
-            "diagnostic_error": error_text,
-        }
-
-        payload = None
-        if response and status == "ok" and response[:3] == bytes([0x62, 0x20, 0x02]):
-            payload = response[3:]
+        values = {}
+        for did in DIAGNOSTIC_DIDS:
+            prefix = f"diagnostic_{did:04x}"
+            response = responses.get(did)
+            received_at = received_times.get(did)
+            values[f"{prefix}_response_hex"] = (
+                response.hex(" ").upper()
+                if response
+                else None
+            )
+            values[f"{prefix}_response_age_s"] = (
+                None
+                if received_at is None
+                else now - received_at
+            )
+            values[f"{prefix}_status"] = statuses.get(did)
+            values[f"{prefix}_error"] = errors.get(did)
 
         for name, definition in DIAGNOSTIC_SIGNALS.items():
-            values[name] = decode_signal(payload, definition) if payload is not None else None
+            did = int(definition["did"])
+            response = responses.get(did)
+            expected_header = bytes(
+                [
+                    (DIAGNOSTIC_SERVICE + 0x40) & 0xFF,
+                    (did >> 8) & 0xFF,
+                    did & 0xFF,
+                ]
+            )
+            payload = None
+            if response and statuses.get(did) == "ok" and response[:3] == expected_header:
+                payload = response[3:]
+
+            values[name] = (
+                decode_signal(payload, definition)
+                if payload is not None
+                else None
+            )
 
         return values
 
@@ -610,7 +687,6 @@ class StandaloneUdsMonitor:
         if self.socket is not None:
             self.socket.close()
             self.socket = None
-
 
 def expected_dynamic_distance(scenario, movement_elapsed_s):
     start = scenario["start_distance_m"]
@@ -647,9 +723,16 @@ def configured_signal_text(values):
     if parts:
         return " | ".join(parts)
 
-    diagnostic_status = values.get("diagnostic_status")
-    if diagnostic_status:
-        return f"Diagnose={diagnostic_status} | Signaldekodierung noch nicht konfiguriert"
+    diagnostic_statuses = [
+        values.get(f"diagnostic_{did:04x}_status")
+        for did in DIAGNOSTIC_DIDS
+    ]
+    if any(diagnostic_statuses):
+        status_text = ", ".join(
+            f"0x{did:04X}={status}"
+            for did, status in zip(DIAGNOSTIC_DIDS, diagnostic_statuses)
+        )
+        return f"Diagnose: {status_text} | Signaldekodierung noch nicht vollstaendig konfiguriert"
     return "keine Live-Signale konfiguriert"
 
 
@@ -812,15 +895,21 @@ def main():
 
     signal_columns = []
     for signal_name in SIGNALS:
-        signal_columns.extend((signal_name, f"{signal_name}_age_s"))
+        if signal_name not in DIAGNOSTIC_SIGNALS:
+            signal_columns.extend((signal_name, f"{signal_name}_age_s"))
 
-    diagnostic_columns = [
-        "diagnostic_response_hex",
-        "diagnostic_response_age_s",
-        "diagnostic_status",
-        "diagnostic_error",
-        *DIAGNOSTIC_SIGNALS.keys(),
-    ]
+    diagnostic_columns = []
+    for did in DIAGNOSTIC_DIDS:
+        prefix = f"diagnostic_{did:04x}"
+        diagnostic_columns.extend(
+            (
+                f"{prefix}_response_hex",
+                f"{prefix}_response_age_s",
+                f"{prefix}_status",
+                f"{prefix}_error",
+            )
+        )
+    diagnostic_columns.extend(DIAGNOSTIC_SIGNALS.keys())
 
     fieldnames = [
         "timestamp_unix_ns",
@@ -837,9 +926,11 @@ def main():
     print("Nur auf einem fuer automatische Bremseingriffe freigegebenen Pruefstand verwenden.")
     print("Der Bereich vor dem Fahrzeug muss frei bleiben.")
     if DIAGNOSTIC_ENABLED:
+        did_text = ", ".join(f"0x{did:04X}" for did in DIAGNOSTIC_DIDS)
         print(
-            f"Das Skript sendet zyklisch 0x{DIAGNOSTIC_SERVICE:02X} "
-            f"0x{DIAGNOSTIC_DID:04X} auf CAN-ID 0x{DIAGNOSTIC_REQUEST_ID:X}."
+            f"Das Skript fragt zyklisch die DIDs {did_text} mit "
+            f"Service 0x{DIAGNOSTIC_SERVICE:02X} auf CAN-ID "
+            f"0x{DIAGNOSTIC_REQUEST_ID:X} ab."
         )
         print("Ein anderes Diagnosegeraet fuer diesen ECU-Kanal vorher trennen.")
 
@@ -879,9 +970,10 @@ def main():
         print(f"\nAusgabeordner: {output_directory}")
         print("Der komplette CAN-Bus wird passiv in can_raw.csv aufgezeichnet.")
         if diagnostic_monitor is not None:
+            did_text = ", ".join(f"0x{did:04X}" for did in DIAGNOSTIC_DIDS)
             print(
                 f"UDS-Abfrage aktiv: 0x{DIAGNOSTIC_REQUEST_ID:X} -> "
-                f"0x{DIAGNOSTIC_RESPONSE_ID:X}, DID 0x{DIAGNOSTIC_DID:04X}."
+                f"0x{DIAGNOSTIC_RESPONSE_ID:X}, DIDs {did_text}."
             )
         for number in range(3, 0, -1):
             print(f"Start in {number} ...")
