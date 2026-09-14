@@ -688,6 +688,7 @@ class StandaloneUdsMonitor:
             self.socket.close()
             self.socket = None
 
+
 def expected_dynamic_distance(scenario, movement_elapsed_s):
     start = scenario["start_distance_m"]
     end = scenario["end_distance_m"]
@@ -700,6 +701,10 @@ def configured_signal_text(values):
     parts = []
     preferred = (
         "vehicle_speed",
+        "wheel_speed_fl",
+        "wheel_speed_fr",
+        "wheel_speed_rl",
+        "wheel_speed_rr",
         "radar_distance",
         "main_brake_pressure",
         "brake_circuit_2_pressure",
@@ -895,8 +900,7 @@ def main():
 
     signal_columns = []
     for signal_name in SIGNALS:
-        if signal_name not in DIAGNOSTIC_SIGNALS:
-            signal_columns.extend((signal_name, f"{signal_name}_age_s"))
+        signal_columns.extend((signal_name, f"{signal_name}_age_s"))
 
     diagnostic_columns = []
     for did in DIAGNOSTIC_DIDS:
@@ -909,7 +913,11 @@ def main():
                 f"{prefix}_error",
             )
         )
-    diagnostic_columns.extend(DIAGNOSTIC_SIGNALS.keys())
+    diagnostic_columns.extend(
+        signal_name
+        for signal_name in DIAGNOSTIC_SIGNALS
+        if signal_name not in SIGNALS
+    )
 
     fieldnames = [
         "timestamp_unix_ns",
