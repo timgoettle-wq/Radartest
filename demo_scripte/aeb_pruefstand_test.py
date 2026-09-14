@@ -570,7 +570,7 @@ class StandaloneUdsMonitor:
             )
             payload = None
             if response and statuses.get(did) == "ok" and response[:3] == expected_header:
-                payload = response[3:]
+                payload = response
 
             values[name] = (
                 decode_signal(payload, definition)
