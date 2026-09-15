@@ -574,6 +574,7 @@ function drawChart(canvasId = "liveChart") {
     context.font = "12px Arial";
     context.fillStyle = "#63756d";
     if (points.length < 2) {
+        window.DistanceChartTooltip?.clear(canvas);
         context.textAlign = "center";
         context.fillText("Der Live-Verlauf erscheint mit den ersten Messpunkten.", width / 2, height / 2);
         return;
@@ -610,6 +611,16 @@ function drawChart(canvasId = "liveChart") {
     context.textAlign = "center";
     context.fillText("Distanz [m]", 0, 0);
     context.restore();
+    window.DistanceChartTooltip?.update(canvas, {
+        points,
+        timeKey: "time",
+        radestKey: "radest",
+        vehicleKey: "vehicle",
+        x,
+        pad,
+        width,
+        height
+    });
 }
 
 function drawPhaseMarkers(context, points, x, pad, height) {
