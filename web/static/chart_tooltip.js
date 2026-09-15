@@ -2,6 +2,7 @@
 
 (function () {
     let tooltip = null;
+    let markers = null;
 
     function ensureTooltip() {
         if (tooltip) return tooltip;
@@ -25,6 +26,23 @@
                 display: block;
                 margin-bottom: 3px;
             }
+            .distance-chart-marker {
+                position: fixed;
+                z-index: 999;
+                width: 10px;
+                height: 10px;
+                border: 2px solid white;
+                border-radius: 50%;
+                box-shadow: 0 1px 5px rgba(0, 59, 50, .35);
+                pointer-events: none;
+                transform: translate(-50%, -50%);
+            }
+            .distance-chart-marker.radest {
+                background: #008143;
+            }
+            .distance-chart-marker.vehicle {
+                background: #d58a00;
+            }
             canvas[data-distance-tooltip] {
                 cursor: crosshair;
             }
@@ -36,6 +54,33 @@
         tooltip.hidden = true;
         document.body.append(tooltip);
         return tooltip;
+    }
+
+    function ensureMarkers() {
+        if (markers) return markers;
+
+        const radest = document.createElement("span");
+        radest.className = "distance-chart-marker radest";
+        radest.hidden = true;
+        const vehicle = document.createElement("span");
+        vehicle.className = "distance-chart-marker vehicle";
+        vehicle.hidden = true;
+        document.body.append(radest, vehicle);
+        markers = {radest, vehicle};
+        return markers;
+    }
+
+    function positionMarker(marker, value, time, rect, state) {
+        if (value === null || time === null || typeof state.y !== "function") {
+            marker.hidden = true;
+            return;
+        }
+
+        const scaleX = rect.width / state.width;
+        const scaleY = rect.height / state.height;
+        marker.style.left = rect.left + state.x(time) * scaleX + "px";
+        marker.style.top = rect.top + state.y(value) * scaleY + "px";
+        marker.hidden = false;
     }
 
     function number(value) {
@@ -51,6 +96,10 @@
 
     function hide() {
         if (tooltip) tooltip.hidden = true;
+        if (markers) {
+            markers.radest.hidden = true;
+            markers.vehicle.hidden = true;
+        }
     }
 
     function handlePointerMove(event) {
@@ -112,6 +161,10 @@
         const top = Math.min(event.clientY + 14, window.innerHeight - box.offsetHeight - 8);
         box.style.left = Math.max(8, left) + "px";
         box.style.top = Math.max(8, top) + "px";
+
+        const pointMarkers = ensureMarkers();
+        positionMarker(pointMarkers.radest, radest, time, rect, state);
+        positionMarker(pointMarkers.vehicle, vehicle, time, rect, state);
     }
 
     function update(canvas, state) {
