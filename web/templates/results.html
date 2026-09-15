@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Radar Testsystem · Ergebnisse</title>
     <link rel="stylesheet" href="/static/style.css">
-    <script src="/static/chart_tooltip.js" defer></script>\n    <script src="/static/results.js" defer></script>
+    <script src="/static/chart_tooltip.js" defer></script>
+    <script src="/static/results.js" defer></script>
 </head>
 <body class="results-page">
     <header class="app-header">
@@ -32,7 +33,6 @@
         <section id="resultsOverview" class="results-view">
             <div class="results-filter-bar">
                 <label><span>Suche</span><input id="resultSearch" type="search" placeholder="Fahrzeug oder TestRun-ID"></label>
-                <label><span>Status</span><select id="resultStatusFilter"><option value="">Alle Status</option><option value="finished">Abgeschlossen</option><option value="completed_with_errors">Mit Fehlern</option><option value="aborted">Abgebrochen</option><option value="running">Laufend</option></select></label>
                 <label><span>Prüfart</span><select id="resultTypeFilter"><option value="">Alle Prüfarten</option><option value="static">Statisch</option><option value="dynamic">Dynamisch</option></select></label>
                 <button id="reloadResults" class="secondary" type="button">Aktualisieren</button>
             </div>
