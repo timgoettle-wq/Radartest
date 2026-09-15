@@ -965,19 +965,7 @@ def main():
         *diagnostic_columns,
     ]
 
-    print("\nSICHERHEITSHINWEIS")
-    print("Das Skript steuert den Pruefstand nicht und ist kein Not-Aus.")
-    print("Nur auf einem fuer automatische Bremseingriffe freigegebenen Pruefstand verwenden.")
-    print("Der Bereich vor dem Fahrzeug muss frei bleiben.")
-    if DIAGNOSTIC_ENABLED:
-        did_text = ", ".join(f"0x{did:04X}" for did in DIAGNOSTIC_DIDS)
-        print(
-            f"Das Skript fragt zyklisch die DIDs {did_text} mit "
-            f"Service 0x{DIAGNOSTIC_SERVICE:02X} auf CAN-ID "
-            f"0x{DIAGNOSTIC_REQUEST_ID:X} ab."
-        )
-        print("Ein anderes Diagnosegeraet fuer diesen ECU-Kanal vorher trennen.")
-
+     
     if input("Zum Start START eingeben: ").strip() != "START":
         print("Test nicht gestartet.")
         return
