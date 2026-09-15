@@ -146,7 +146,6 @@ function renderResults() {
     const visible = resultState.results.filter(run => {
         const searchText = (run.vehicle_name + " " + run.run_id).toLocaleLowerCase("de");
         return (!query || searchText.includes(query))
-            && (!status || run.status === status)
             && (!type || (run.test_types || []).includes(type));
     });
     const body = $("resultsTableBody");
@@ -379,6 +378,7 @@ function drawArchiveChart(points) {
     context.font = "12px Arial";
 
     if (valid.length < 2) {
+        window.DistanceChartTooltip?.clear(canvas);
         context.fillStyle = "#63756d";
         context.textAlign = "center";
         context.fillText("Für diesen Graphen sind nicht genügend Messpunkte vorhanden.", width / 2, height / 2);
@@ -413,6 +413,16 @@ function drawArchiveChart(points) {
     context.textAlign = "right"; context.fillText(maxX.toFixed(1) + " s", width - pad.right, height - 12);
     context.save(); context.translate(14, height / 2); context.rotate(-Math.PI / 2);
     context.textAlign = "center"; context.fillText("Distanz [m]", 0, 0); context.restore();
+    window.DistanceChartTooltip?.update(canvas, {
+        points: valid,
+        timeKey: "elapsed_s",
+        radestKey: "radest_distance_m",
+        vehicleKey: "vehicle_distance_m",
+        x,
+        pad,
+        width,
+        height
+    });
 }
 
 function drawSeries(context, points, key, x, y, color) {
