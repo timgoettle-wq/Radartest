@@ -617,6 +617,7 @@ function drawChart(canvasId = "liveChart") {
         radestKey: "radest",
         vehicleKey: "vehicle",
         x,
+        y,
         pad,
         width,
         height
