@@ -141,7 +141,6 @@ async function loadResults() {
 
 function renderResults() {
     const query = $("resultSearch").value.trim().toLocaleLowerCase("de");
-    const status = $("resultStatusFilter").value;
     const type = $("resultTypeFilter").value;
     const visible = resultState.results.filter(run => {
         const searchText = (run.vehicle_name + " " + run.run_id).toLocaleLowerCase("de");
@@ -163,7 +162,6 @@ function renderResults() {
         const vehicleCell = row.insertCell();
         vehicleCell.append(textElement("strong", run.vehicle_name));
         vehicleCell.append(textElement("small", run.run_id));
-        row.insertCell().append(badge(run.status));
         row.insertCell().textContent = String(run.test_count);
         row.insertCell().append(badge(run.quick_check_status));
         row.insertCell().append(badge(run.precheck_status));
@@ -210,7 +208,6 @@ function renderRun(data) {
     facts.replaceChildren(
         fact("Start", formatDate(run.start_time)),
         fact("Ende", formatDate(run.end_time)),
-        fact("Status", statusLabels[run.status] || run.status),
         fact("Git-Commit", run.software?.git_commit || "Nicht erfasst")
     );
     renderQuickCheck(run.quick_check, summary.quick_check_status);
@@ -472,7 +469,6 @@ async function restoreFromLocation() {
 
 $("reloadResults").addEventListener("click", loadResults);
 $("resultSearch").addEventListener("input", renderResults);
-$("resultStatusFilter").addEventListener("change", renderResults);
 $("resultTypeFilter").addEventListener("change", renderResults);
 $("backToResults").addEventListener("click", () => { showView("resultsOverview"); setLocation(); });
 $("backToResultsFromMeasurement").addEventListener("click", () => { showView("resultsOverview"); setLocation(); });
