@@ -397,7 +397,7 @@ button.primary,.database-page button.secondary,.database-page button.danger,.res
 .results-shell {width:min(1180px,calc(100% - 40px));margin:30px auto 60px;}
 .results-view {margin:0;padding:28px;background:white;border:1px solid var(--green-border);border-radius:14px;box-shadow:0 8px 30px rgba(0,107,82,.07);}
 .results-view[hidden] {display:none!important;}
-.results-filter-bar {display:grid;grid-template-columns:minmax(260px,2fr) minmax(180px,1fr) minmax(180px,1fr) auto;gap:14px;align-items:end;margin:22px 0;}
+.results-filter-bar {display:grid;grid-template-columns:minmax(260px,2fr) minmax(180px,1fr) auto;gap:14px;align-items:end;margin:22px 0;}
 .results-filter-bar label {display:flex;flex-direction:column;gap:7px;color:var(--text-muted);font-size:13px;font-weight:650;}
 .results-filter-bar input,.results-filter-bar select {width:100%;margin:0;padding:10px 12px;border:1px solid #bfd4c8;border-radius:8px;font:inherit;color:var(--text-primary);background:white;}
 .results-filter-bar input:focus,.results-filter-bar select:focus {outline:3px solid rgba(0,129,67,.15);border-color:var(--green-primary);}
