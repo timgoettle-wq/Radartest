@@ -416,6 +416,7 @@ function drawArchiveChart(points) {
         radestKey: "radest_distance_m",
         vehicleKey: "vehicle_distance_m",
         x,
+        y,
         pad,
         width,
         height
