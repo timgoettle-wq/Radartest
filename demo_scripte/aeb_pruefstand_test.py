@@ -882,13 +882,28 @@ def create_diagram(rows, output_file):
     axes[0].grid(True, alpha=0.35)
 
     speed_names = ("wheel_speed_fl", "wheel_speed_fr", "wheel_speed_rl", "wheel_speed_rr")
-    for name in speed_names:
-        values = [row.get(name) for row in rows]
-        if any(value is not None for value in values):
-            axes[1].plot(times, values, label=name)
+    vehicle_speeds = []
+    for row in rows:
+        available_speeds = [
+            row.get(name)
+            for name in speed_names
+            if row.get(name) is not None
+        ]
+        vehicle_speeds.append(
+            sum(available_speeds) / len(available_speeds)
+            if available_speeds
+            else None
+        )
+    if any(value is not None for value in vehicle_speeds):
+        axes[1].plot(
+            times,
+            vehicle_speeds,
+            label="Fahrzeuggeschwindigkeit",
+            color="#1976d2",
+        )
     axes[1].set_ylabel("Geschwindigkeit [km/h]")
     if axes[1].lines:
-        axes[1].legend(ncol=3)
+        axes[1].legend()
     axes[1].grid(True, alpha=0.35)
 
     for name in (
