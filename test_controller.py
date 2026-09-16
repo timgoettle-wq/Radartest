@@ -496,10 +496,41 @@ class TestController:
             .measure_get_polarization_77ghz()
         )
 
+        detected_code = (
+            str(self.polarization)
+            .strip()
+            .strip('"')
+            .split(",")[0]
+            .strip()
+            .upper()
+        )
+
+        polarization_setting = {
+            "5": "H",
+            "8": "V",
+            "7": "P45",
+            "6": "M45",
+            "H": "H",
+            "V": "V",
+            "P45": "P45",
+            "M45": "M45"
+        }.get(detected_code)
+
+        if polarization_setting is None:
+            raise RuntimeError(
+                "Unbekannte Polarisationsantwort des RadEsT: "
+                f"{self.polarization}"
+            )
+
+        self.radest.system_set_polarization_77ghz(
+            polarization_setting
+        )
+
         return {
             "status": "running",
             "phase": "frequency",
-            "polarization": self.polarization
+            "polarization": self.polarization,
+            "polarization_setting": polarization_setting
         }
 
 
@@ -646,14 +677,6 @@ class TestController:
         return rcs_dbsm
 
 
-    def _set_rcs_antenna_pair(self):
-
-        # Kalibriertes Antennenpaar der mittleren Antennengruppe.
-        # Diese Kombination verwendet auch die R&S-RadEsT-App.
-        self.radest.system_set_rx(6)
-        self.radest.system_set_tx(7)
-
-
     # ==================================================
     # STATISCHE MESSUNG VORBEREITEN
     # ==================================================
@@ -738,13 +761,6 @@ class TestController:
         self.requested_distance = float(
             distance_m
         )
-
-
-        # --------------------------------------------------
-        # Kalibriertes Antennenpaar aus Gruppe 2 auswählen
-        # --------------------------------------------------
-
-        self._set_rcs_antenna_pair()
 
 
         # --------------------------------------------------
@@ -976,13 +992,6 @@ class TestController:
             self._measurement_error = None
 
             self._measurement_sequence = 0
-
-
-        # --------------------------------------------------
-        # Kalibriertes Antennenpaar aus Gruppe 2 auswählen
-        # --------------------------------------------------
-
-        self._set_rcs_antenna_pair()
 
 
         # --------------------------------------------------
