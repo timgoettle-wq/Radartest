@@ -31,8 +31,8 @@ from radest.device import RadestDevice
 
 VEHICLE_ID = 1
 
-STATIC_DISTANCE_M = 20.0
-RELATIVE_SPEED_KMH = 3.0
+STATIC_DISTANCE_M = 40.0
+RELATIVE_SPEED_KMH = 5.0
 
 # True: Ziel bewegt sich auf das Fahrzeug zu
 # False: Ziel bewegt sich vom Fahrzeug weg
