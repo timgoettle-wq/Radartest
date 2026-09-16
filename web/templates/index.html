@@ -122,7 +122,16 @@
                     <div class="parameter-grid static-parameter-grid">
                         <label for="distanceInput">Distanz <span>m</span><input id="distanceInput" type="number" value="15.0" step="0.1" min="0.1"></label>
                     </div>
-                    <button id="staticButton" class="primary" type="button">Statische Messung starten</button>
+                    <button id="staticRcsLimitsButton" class="secondary" type="button">RCS-Grenzen ermitteln</button>
+                    <div id="staticRcsPanel" class="rcs-limit-panel" hidden>
+                        <div class="rcs-limit-values">
+                            <div><span>Polarisation</span><strong id="staticRcsPolarization">–</strong></div>
+                            <div><span>EIRP</span><strong id="staticRcsEirp">–</strong></div>
+                            <div><span>RCS-Bereich</span><strong id="staticRcsRange">–</strong></div>
+                        </div>
+                        <label for="staticRcsInput">RCS festlegen <span>dBsm</span><input id="staticRcsInput" type="number" step="0.1"></label>
+                        <button id="staticButton" class="primary" type="button">Statische Messung starten</button>
+                    </div>
                 </article>
                 <article class="test-type-card">
                     <div><p class="eyebrow">Bewegtes Ziel</p><h2>Dynamische Messung</h2><p>Radarziel zwischen zwei Distanzen bewegen.</p></div>
@@ -130,8 +139,18 @@
                         <label for="dynamicStartDistanceInput">Startdistanz <span>m</span><input id="dynamicStartDistanceInput" type="number" value="5.0" step="0.1" min="0.1"></label>
                         <label for="dynamicEndDistanceInput">Enddistanz <span>m</span><input id="dynamicEndDistanceInput" type="number" value="15.0" step="0.1" min="0.1"></label>
                         <label for="dynamicVelocityInput">Geschwindigkeit <span>km/h</span><input id="dynamicVelocityInput" type="number" value="2" step="0.1" min="0.1"></label>
+                        <label for="dynamicRcsModeInput">RCS-Verhalten <span>im Szenario</span><select id="dynamicRcsModeInput"><option value="0" selected>Konstante RCS</option><option value="1">Variable RCS / konstante Ausgangsleistung</option></select></label>
                     </div>
-                    <button id="dynamicButton" class="primary" type="button">Dynamische Messung starten</button>
+                    <button id="dynamicRcsLimitsButton" class="secondary" type="button">RCS-Grenzen ermitteln</button>
+                    <div id="dynamicRcsPanel" class="rcs-limit-panel" hidden>
+                        <div class="rcs-limit-values">
+                            <div><span>Polarisation</span><strong id="dynamicRcsPolarization">–</strong></div>
+                            <div><span>EIRP</span><strong id="dynamicRcsEirp">–</strong></div>
+                            <div><span>RCS-Bereich</span><strong id="dynamicRcsRange">–</strong></div>
+                        </div>
+                        <label for="dynamicRcsInput">RCS festlegen <span>dBsm</span><input id="dynamicRcsInput" type="number" step="0.1"></label>
+                        <button id="dynamicButton" class="primary" type="button">Dynamische Messung starten</button>
+                    </div>
                 </article>
             </div>
             <div class="screen-actions"><button class="secondary" data-go-step="3" type="button">Zurück</button><span></span></div>

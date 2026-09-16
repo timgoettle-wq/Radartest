@@ -302,6 +302,8 @@ function formatPolarization(value) {
         "6": "−45°",
         "H": "Horizontal",
         "V": "Vertikal",
+        "HORIZONTAL": "Horizontal",
+        "VERTICAL": "Vertikal",
         "P45": "+45°",
         "M45": "−45°"
     };
@@ -390,34 +392,116 @@ async function skipPrecheck() {
     }
 }
 
-function staticConfiguration() {
-    const distance = Number($("distanceInput").value);
-    if (!Number.isFinite(distance) || distance <= 0) throw new Error("Distanz muss größer als 0 m sein.");
-    return {
-        type: "static",
-        title: "Statische Messung",
-        description: distance.toFixed(1) + " m konstante Zieldistanz",
-        resultParameters: distance.toFixed(1) + " m",
-        url: "/api/static/start?distance_m=" + encodeURIComponent(distance)
-    };
+function setRcsLimitDisplay(prefix, data) {
+    const limits = data.rcs_limits;
+    const input = $(prefix + "RcsInput");
+    const minimum = Number(limits.rcs_min_dbsm);
+    const maximum = Number(limits.rcs_max_dbsm);
+    $(prefix + "RcsPolarization").textContent = formatPolarization(limits.polarization);
+    $(prefix + "RcsEirp").textContent = fixed(limits.eirp_dbm) + " dBm";
+    $(prefix + "RcsRange").textContent = fixed(minimum) + " bis " + fixed(maximum) + " dBsm";
+    input.min = String(minimum);
+    input.max = String(maximum);
+    input.value = String(minimum <= 0 && maximum >= 0 ? 0 : minimum);
+    $(prefix + "RcsPanel").hidden = false;
 }
 
-function dynamicConfiguration() {
+function invalidateStaticRcs() {
+    $("staticRcsPanel").hidden = true;
+}
+
+function invalidateDynamicRcs() {
+    $("dynamicRcsPanel").hidden = true;
+}
+
+function staticBaseConfiguration() {
+    const distance = Number($("distanceInput").value);
+    if (!Number.isFinite(distance) || distance <= 0) throw new Error("Distanz muss größer als 0 m sein.");
+    return {distance};
+}
+
+function dynamicBaseConfiguration() {
     const start = Number($("dynamicStartDistanceInput").value);
     const end = Number($("dynamicEndDistanceInput").value);
     const velocity = Number($("dynamicVelocityInput").value);
+    const rcsConstantState = Number($("dynamicRcsModeInput").value);
     if (![start, end, velocity].every(Number.isFinite) || start <= 0 || end <= 0 || velocity <= 0) {
         throw new Error("Distanzen und Geschwindigkeit müssen größer als 0 sein.");
     }
     if (start === end) throw new Error("Start- und Enddistanz müssen unterschiedlich sein.");
+    return {start, end, velocity, rcsConstantState};
+}
+
+async function prepareStaticRcs() {
+    clearError();
+    const {distance} = staticBaseConfiguration();
+    setBusy($("staticRcsLimitsButton"), true, "RCS-Grenzen werden ermittelt …", "RCS-Grenzen ermitteln");
+    invalidateStaticRcs();
+    try {
+        const data = await apiRequest(
+            "/api/static/rcs-limits?distance_m=" + encodeURIComponent(distance),
+            {method: "POST"}
+        );
+        setRcsLimitDisplay("static", data);
+    } catch (error) {
+        showError(error.message);
+    } finally {
+        setBusy($("staticRcsLimitsButton"), false, "", "RCS-Grenzen ermitteln");
+    }
+}
+
+async function prepareDynamicRcs() {
+    clearError();
+    const configuration = dynamicBaseConfiguration();
+    setBusy($("dynamicRcsLimitsButton"), true, "RCS-Grenzen werden ermittelt …", "RCS-Grenzen ermitteln");
+    invalidateDynamicRcs();
+    try {
+        const data = await apiRequest(
+            "/api/dynamic/rcs-limits?start_distance_m=" + encodeURIComponent(configuration.start)
+                + "&end_distance_m=" + encodeURIComponent(configuration.end)
+                + "&velocity_kmh=" + encodeURIComponent(configuration.velocity)
+                + "&rcs_constant_state=" + encodeURIComponent(configuration.rcsConstantState),
+            {method: "POST"}
+        );
+        setRcsLimitDisplay("dynamic", data);
+    } catch (error) {
+        showError(error.message);
+    } finally {
+        setBusy($("dynamicRcsLimitsButton"), false, "", "RCS-Grenzen ermitteln");
+    }
+}
+
+function staticConfiguration() {
+    const {distance} = staticBaseConfiguration();
+    if ($("staticRcsPanel").hidden) throw new Error("Bitte zuerst die RCS-Grenzen ermitteln.");
+    const rcs = Number($("staticRcsInput").value);
+    if (!Number.isFinite(rcs)) throw new Error("Bitte eine gültige RCS eingeben.");
+    return {
+        type: "static",
+        title: "Statische Messung",
+        description: distance.toFixed(1) + " m konstante Zieldistanz | " + rcs.toFixed(1) + " dBsm",
+        resultParameters: distance.toFixed(1) + " m · " + rcs.toFixed(1) + " dBsm",
+        url: "/api/static/start?distance_m=" + encodeURIComponent(distance)
+            + "&rcs_dbsm=" + encodeURIComponent(rcs)
+    };
+}
+
+function dynamicConfiguration() {
+    const {start, end, velocity, rcsConstantState} = dynamicBaseConfiguration();
+    if ($("dynamicRcsPanel").hidden) throw new Error("Bitte zuerst die RCS-Grenzen ermitteln.");
+    const rcs = Number($("dynamicRcsInput").value);
+    if (!Number.isFinite(rcs)) throw new Error("Bitte eine gültige RCS eingeben.");
+    const rcsMode = rcsConstantState === 0 ? "konstante RCS" : "variable RCS";
     return {
         type: "dynamic",
         title: "Dynamische Messung",
-        description: start.toFixed(1) + " m → " + end.toFixed(1) + " m | " + velocity.toFixed(1) + " km/h",
-        resultParameters: start.toFixed(1) + " m → " + end.toFixed(1) + " m · " + velocity.toFixed(1) + " km/h",
+        description: start.toFixed(1) + " m → " + end.toFixed(1) + " m | " + velocity.toFixed(1) + " km/h | " + rcs.toFixed(1) + " dBsm, " + rcsMode,
+        resultParameters: start.toFixed(1) + " m → " + end.toFixed(1) + " m · " + velocity.toFixed(1) + " km/h · " + rcs.toFixed(1) + " dBsm · " + rcsMode,
         url: "/api/dynamic/start?start_distance_m=" + encodeURIComponent(start)
             + "&end_distance_m=" + encodeURIComponent(end)
             + "&velocity_kmh=" + encodeURIComponent(velocity)
+            + "&rcs_constant_state=" + encodeURIComponent(rcsConstantState)
+            + "&rcs_dbsm=" + encodeURIComponent(rcs)
     };
 }
 
@@ -745,6 +829,8 @@ function resetWorkflow() {
     $("quickCheckResult").hidden = true;
     $("precheckResult").hidden = true;
     $("precheckProgress").hidden = true;
+    invalidateStaticRcs();
+    invalidateDynamicRcs();
     $("toQuickCheckButton").disabled = true;
     $("toPrecheckButton").disabled = true;
     $("toTestsButton").disabled = true;
@@ -816,21 +902,28 @@ function restoredConfiguration(data) {
         const start = Number(data.scenario_start_distance);
         const end = Number(data.scenario_end_distance);
         const velocity = Number(data.scenario_velocity_kmh);
+        const rcs = Number(data.rcs_dbsm);
+        const rcsConstantState = Number(data.rcs_constant_state);
+        const rcsMode = rcsConstantState === 0 ? "konstante RCS" : "variable RCS";
         return {
             type: "dynamic", title: "Dynamische Messung",
-            description: fixed(start, 1) + " m → " + fixed(end, 1) + " m | " + fixed(velocity, 1) + " km/h",
-            resultParameters: fixed(start, 1) + " m → " + fixed(end, 1) + " m · " + fixed(velocity, 1) + " km/h",
+            description: fixed(start, 1) + " m → " + fixed(end, 1) + " m | " + fixed(velocity, 1) + " km/h | " + fixed(rcs, 1) + " dBsm, " + rcsMode,
+            resultParameters: fixed(start, 1) + " m → " + fixed(end, 1) + " m · " + fixed(velocity, 1) + " km/h · " + fixed(rcs, 1) + " dBsm · " + rcsMode,
             url: "/api/dynamic/start?start_distance_m=" + encodeURIComponent(start)
                 + "&end_distance_m=" + encodeURIComponent(end)
                 + "&velocity_kmh=" + encodeURIComponent(velocity)
+                + "&rcs_constant_state=" + encodeURIComponent(rcsConstantState)
+                + "&rcs_dbsm=" + encodeURIComponent(rcs)
         };
     }
     const distance = Number(data.requested_distance);
+    const rcs = Number(data.rcs_dbsm);
     return {
         type: "static", title: "Statische Messung",
-        description: fixed(distance, 1) + " m konstante Zieldistanz",
-        resultParameters: fixed(distance, 1) + " m",
+        description: fixed(distance, 1) + " m konstante Zieldistanz | " + fixed(rcs, 1) + " dBsm",
+        resultParameters: fixed(distance, 1) + " m · " + fixed(rcs, 1) + " dBsm",
         url: "/api/static/start?distance_m=" + encodeURIComponent(distance)
+            + "&rcs_dbsm=" + encodeURIComponent(rcs)
     };
 }
 
@@ -841,13 +934,28 @@ $("toPrecheckButton").addEventListener("click", () => showStep(3));
 $("precheckButton").addEventListener("click", runPrecheck);
 $("skipPrecheckButton").addEventListener("click", skipPrecheck);
 $("toTestsButton").addEventListener("click", () => showStep(4));
+$("staticRcsLimitsButton").addEventListener("click", prepareStaticRcs);
+$("dynamicRcsLimitsButton").addEventListener("click", prepareDynamicRcs);
 $("staticButton").addEventListener("click", startStaticMeasurement);
 $("dynamicButton").addEventListener("click", startDynamicMeasurement);
+$("distanceInput").addEventListener("input", invalidateStaticRcs);
+["dynamicStartDistanceInput", "dynamicEndDistanceInput", "dynamicVelocityInput", "dynamicRcsModeInput"].forEach(id => {
+    $(id).addEventListener("input", invalidateDynamicRcs);
+    $(id).addEventListener("change", invalidateDynamicRcs);
+});
 $("stopButton").addEventListener("click", stopMeasurement);
 $("disconnectButton").addEventListener("click", () => disconnectSystem(false));
-$("repeatButton").addEventListener("click", () => startConfiguredMeasurement(uiState.currentMeasurement || uiState.lastConfiguration));
+$("repeatButton").addEventListener("click", () => {
+    uiState.measurementComplete = false;
+    invalidateStaticRcs();
+    invalidateDynamicRcs();
+    showStep(4);
+    showMessage("Vor der Wiederholung bitte die RCS-Grenzen erneut ermitteln.");
+});
 $("moreMeasurementButton").addEventListener("click", () => {
     uiState.measurementComplete = false;
+    invalidateStaticRcs();
+    invalidateDynamicRcs();
     showStep(4);
 });
 $("finishRunButton").addEventListener("click", () => disconnectSystem(true));

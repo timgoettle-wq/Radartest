@@ -228,6 +228,15 @@ table {width:100%;border-collapse:collapse;}th,td {padding:10px;border-bottom:1p
 .static-parameter-grid {grid-template-columns:1fr;}
 .parameter-grid label {min-width:0;}
 .parameter-grid input {display:block;width:100%;min-width:0;}
+.rcs-limit-panel {display:flex;flex-direction:column;gap:14px;padding:16px;border:1px solid var(--green-border);border-radius:8px;background:#f1f8f4;}
+.rcs-limit-panel[hidden] {display:none!important;}
+.rcs-limit-panel>label {display:flex;flex-direction:column;gap:7px;color:#415d52;font-size:13px;font-weight:700;}
+.rcs-limit-panel>label span {font-weight:400;color:var(--text-muted);}
+.rcs-limit-panel input {width:100%;}
+.rcs-limit-values {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;}
+.rcs-limit-values>div {padding:11px 12px;border-bottom:1px solid var(--green-border);background:rgba(255,255,255,.58);min-width:0;}
+.rcs-limit-values span {display:block;margin-bottom:5px;color:var(--text-muted);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;}
+.rcs-limit-values strong {overflow-wrap:anywhere;}
 
 .metric-grid {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;}
 .metric-grid.compact {grid-template-columns:repeat(4,minmax(0,1fr));}
@@ -287,6 +296,7 @@ table {width:100%;border-collapse:collapse;}th,td {padding:10px;border-bottom:1p
     .selection-panel,.test-type-grid,.metric-grid,.metric-grid.compact,.result-context {grid-template-columns:1fr;}
     .selection-panel label {grid-column:auto;}
     .parameter-grid {grid-template-columns:1fr;}
+    .rcs-limit-values {grid-template-columns:1fr;}
     .screen-actions,.precheck-actions,.result-actions {align-items:stretch;flex-direction:column;}
     .screen-actions span {display:none;}
     .screen-actions button {width:100%;}
@@ -487,6 +497,7 @@ button.primary,.database-page button.secondary,.database-page button.danger,.res
 #screenTests:has(#chooseStatic:checked) .test-type-card:nth-child(2),
 #screenTests:has(#chooseDynamic:checked) .test-type-card:first-child {display:none;}
 #screenTests .static-parameter-grid {max-width:320px;}
+#screenTests .test-type-card:nth-child(2) .parameter-grid {grid-template-columns:repeat(4,minmax(0,1fr));}
 #screenTests .test-type-card > button {align-self:flex-start;}
 #screenTests input,#screenVehicle select {border-radius:4px;}
 @media(max-width:760px) {
@@ -495,6 +506,7 @@ button.primary,.database-page button.secondary,.database-page button.danger,.res
     #screenVehicle #connectionResult {border-left:0;border-top:1px solid var(--green-border);padding:24px 0 0;}
     .test-mode-selector label {padding:12px 16px;}
     #screenTests .parameter-grid {grid-template-columns:1fr;}
+    #screenTests .test-type-card:nth-child(2) .parameter-grid {grid-template-columns:1fr;}
 }
 
 

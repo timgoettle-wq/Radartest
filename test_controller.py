@@ -65,6 +65,10 @@ class TestController:
 
         self.radest_distance = None
 
+        self.static_rcs_limits = None
+        self.static_rcs_dbsm = None
+        self._static_rcs_prepared_distance = None
+
 
         # ==================================================
         # Dynamische Messung
@@ -82,6 +86,11 @@ class TestController:
         self.dynamic_total_duration_s = None
         self.dynamic_direction = None
         self.dynamic_pre_hold_distance = None
+
+        self.dynamic_rcs_limits = None
+        self.dynamic_rcs_dbsm = None
+        self.dynamic_rcs_constant_state = None
+        self._dynamic_rcs_prepared_configuration = None
 
         self._scenario_thread = None
 
@@ -464,6 +473,13 @@ class TestController:
         self.polarization = None
         self.frequency_range = None
         self.power = None
+        self.static_rcs_limits = None
+        self.static_rcs_dbsm = None
+        self._static_rcs_prepared_distance = None
+        self.dynamic_rcs_limits = None
+        self.dynamic_rcs_dbsm = None
+        self.dynamic_rcs_constant_state = None
+        self._dynamic_rcs_prepared_configuration = None
 
         return {
             "status": "running",
@@ -542,6 +558,13 @@ class TestController:
         self.polarization = None
         self.frequency_range = None
         self.power = None
+        self.static_rcs_limits = None
+        self.static_rcs_dbsm = None
+        self._static_rcs_prepared_distance = None
+        self.dynamic_rcs_limits = None
+        self.dynamic_rcs_dbsm = None
+        self.dynamic_rcs_constant_state = None
+        self._dynamic_rcs_prepared_configuration = None
 
         result = {
             "status": "skipped",
@@ -582,11 +605,52 @@ class TestController:
         }
 
 
+    @staticmethod
+    def _parse_rcs_limits(answer):
+
+        values = [
+            value.strip().strip('"')
+            for value in str(answer).strip().split(",")
+        ]
+
+        if len(values) != 4:
+            raise RuntimeError(
+                "RadEsT hat ungültige RCS-Grenzen zurückgegeben: "
+                f"{answer}"
+            )
+
+        return {
+            "polarization": values[0],
+            "eirp_dbm": float(values[1]),
+            "rcs_min_dbsm": float(values[2]),
+            "rcs_max_dbsm": float(values[3])
+        }
+
+
+    @staticmethod
+    def _validate_rcs_value(rcs_dbsm, limits):
+
+        rcs_dbsm = float(rcs_dbsm)
+
+        if not (
+            limits["rcs_min_dbsm"]
+            <= rcs_dbsm
+            <= limits["rcs_max_dbsm"]
+        ):
+            raise ValueError(
+                f"RCS muss zwischen "
+                f"{limits['rcs_min_dbsm']:.2f} und "
+                f"{limits['rcs_max_dbsm']:.2f} dBsm liegen"
+            )
+
+        return rcs_dbsm
+
+
     # ==================================================
-    # STATISCHE MESSUNG STARTEN / VORBEREITEN
+    # STATISCHE MESSUNG VORBEREITEN
     # ==================================================
 
-    def start_static_measurement(
+    def prepare_static_measurement(
         self,
         distance_m
     ):
@@ -611,6 +675,22 @@ class TestController:
             raise RuntimeError(
                 "Das dynamische RadEsT-Szenario läuft noch"
             )
+
+        distance_m = float(distance_m)
+
+        if distance_m <= 0:
+            raise ValueError(
+                "Distanz muss größer als 0 m sein"
+            )
+
+        self.static_rcs_limits = None
+        self.static_rcs_dbsm = None
+        self._static_rcs_prepared_distance = None
+
+        self.dynamic_rcs_limits = None
+        self.dynamic_rcs_dbsm = None
+        self.dynamic_rcs_constant_state = None
+        self._dynamic_rcs_prepared_configuration = None
 
 
         # --------------------------------------------------
@@ -669,6 +749,68 @@ class TestController:
             self.radest.target_get_distance()
         )
 
+        self.static_rcs_limits = self._parse_rcs_limits(
+            self.radest.target_get_rcs_limits()
+        )
+
+        self.static_rcs_dbsm = None
+        self._static_rcs_prepared_distance = (
+            self.requested_distance
+        )
+
+        self.static_test_active = False
+        self.dynamic_test_active = False
+        self._measurement_mode = None
+
+
+        return {
+
+            "test_type":
+                "static",
+
+            "requested_distance":
+                self.requested_distance,
+
+            "radest_distance":
+                self.radest_distance,
+
+            "rcs_limits":
+                self.static_rcs_limits
+        }
+
+
+    # ==================================================
+    # STATISCHE MESSUNG STARTEN
+    # ==================================================
+
+    def start_static_measurement(
+        self,
+        distance_m,
+        rcs_dbsm
+    ):
+
+        self._check_connection()
+
+        distance_m = float(distance_m)
+
+        if (
+            self.static_rcs_limits is None
+            or self._static_rcs_prepared_distance != distance_m
+        ):
+            raise RuntimeError(
+                "RCS-Grenzen müssen für diese Distanz zuerst "
+                "ermittelt werden"
+            )
+
+        self.static_rcs_dbsm = self._validate_rcs_value(
+            rcs_dbsm,
+            self.static_rcs_limits
+        )
+
+        self.radest.target_set_rcs(
+            self.static_rcs_dbsm
+        )
+
 
         self.static_test_active = True
 
@@ -686,7 +828,13 @@ class TestController:
                 self.requested_distance,
 
             "radest_distance":
-                self.radest_distance
+                self.radest_distance,
+
+            "rcs_dbsm":
+                self.static_rcs_dbsm,
+
+            "rcs_limits":
+                self.static_rcs_limits
         }
 
 
@@ -694,11 +842,12 @@ class TestController:
     # DYNAMISCHE MESSUNG VORBEREITEN
     # ==================================================
 
-    def start_dynamic_measurement(
+    def prepare_dynamic_measurement(
         self,
         start_distance_m,
         end_distance_m,
         velocity_kmh,
+        rcs_constant_state,
         pre_hold_s=2.0,
         post_hold_s=2.0
     ):
@@ -737,6 +886,10 @@ class TestController:
             velocity_kmh
         )
 
+        rcs_constant_state = int(
+            rcs_constant_state
+        )
+
         pre_hold_s = float(
             pre_hold_s
         )
@@ -773,12 +926,27 @@ class TestController:
                 "Geschwindigkeit muss größer als 0 km/h sein"
             )
 
+        if rcs_constant_state not in (0, 1):
+
+            raise ValueError(
+                "RCS-Modus muss 0 (konstant) oder 1 (variabel) sein"
+            )
+
         if pre_hold_s < 0 or post_hold_s < 0:
 
             raise ValueError(
                 "Vorhalte- und Nachhaltezeit dürfen "
                 "nicht negativ sein"
             )
+
+        self.dynamic_rcs_limits = None
+        self.dynamic_rcs_dbsm = None
+        self.dynamic_rcs_constant_state = None
+        self._dynamic_rcs_prepared_configuration = None
+
+        self.static_rcs_limits = None
+        self.static_rcs_dbsm = None
+        self._static_rcs_prepared_distance = None
 
 
         self.stop_measurement_loop()
@@ -809,6 +977,10 @@ class TestController:
 
         self.radest.scenario_velocity(
             velocity_kmh
+        )
+
+        self.radest.scenario_constant_rcs(
+            rcs_constant_state
         )
 
 
@@ -844,6 +1016,22 @@ class TestController:
 
         self.dynamic_pre_hold_distance = (
             self.radest.target_get_distance()
+        )
+
+        self.dynamic_rcs_limits = self._parse_rcs_limits(
+            self.radest.scenario_get_rcs_limits()
+        )
+
+        self.dynamic_rcs_dbsm = None
+        self.dynamic_rcs_constant_state = (
+            rcs_constant_state
+        )
+
+        self._dynamic_rcs_prepared_configuration = (
+            start_distance_m,
+            end_distance_m,
+            velocity_kmh,
+            rcs_constant_state
         )
 
 
@@ -884,16 +1072,8 @@ class TestController:
         )
 
         self.static_test_active = False
-
-        self.dynamic_test_active = True
-
-        self._measurement_mode = "dynamic"
-
-        self._dynamic_sequence_start_ns = None
-        self._scenario_start_ns = None
-        self._scenario_trigger_requested_ns = None
-        self._scenario_trigger_call_ns = None
-        self._scenario_trigger_returned_ns = None
+        self.dynamic_test_active = False
+        self._measurement_mode = None
 
 
         return {
@@ -923,7 +1103,80 @@ class TestController:
                 self.dynamic_direction,
 
             "pre_hold_distance":
-                self.dynamic_pre_hold_distance
+                self.dynamic_pre_hold_distance,
+
+            "rcs_constant_state":
+                self.dynamic_rcs_constant_state,
+
+            "rcs_limits":
+                self.dynamic_rcs_limits
+        }
+
+
+    # ==================================================
+    # DYNAMISCHE MESSUNG STARTEN
+    # ==================================================
+
+    def start_dynamic_measurement(
+        self,
+        start_distance_m,
+        end_distance_m,
+        velocity_kmh,
+        rcs_constant_state,
+        rcs_dbsm
+    ):
+
+        self._check_connection()
+
+        configuration = (
+            float(start_distance_m),
+            float(end_distance_m),
+            float(velocity_kmh),
+            int(rcs_constant_state)
+        )
+
+        if (
+            self.dynamic_rcs_limits is None
+            or self._dynamic_rcs_prepared_configuration
+            != configuration
+        ):
+            raise RuntimeError(
+                "RCS-Grenzen müssen für dieses Szenario zuerst "
+                "ermittelt werden"
+            )
+
+        self.dynamic_rcs_dbsm = self._validate_rcs_value(
+            rcs_dbsm,
+            self.dynamic_rcs_limits
+        )
+
+        self.radest.scenario_set_rcs(
+            self.dynamic_rcs_dbsm
+        )
+
+        self.static_test_active = False
+        self.dynamic_test_active = True
+        self._measurement_mode = "dynamic"
+
+        self._dynamic_sequence_start_ns = None
+        self._scenario_start_ns = None
+        self._scenario_trigger_requested_ns = None
+        self._scenario_trigger_call_ns = None
+        self._scenario_trigger_returned_ns = None
+
+        return {
+            "start_distance": self.dynamic_start_distance,
+            "end_distance": self.dynamic_end_distance,
+            "velocity_kmh": self.dynamic_velocity_kmh,
+            "duration_s": self.dynamic_duration_s,
+            "pre_hold_s": self.dynamic_pre_hold_s,
+            "post_hold_s": self.dynamic_post_hold_s,
+            "total_duration_s": self.dynamic_total_duration_s,
+            "direction": self.dynamic_direction,
+            "pre_hold_distance": self.dynamic_pre_hold_distance,
+            "rcs_constant_state": self.dynamic_rcs_constant_state,
+            "rcs_dbsm": self.dynamic_rcs_dbsm,
+            "rcs_limits": self.dynamic_rcs_limits
         }
 
 
@@ -1154,6 +1407,12 @@ class TestController:
             "radest_distance_source":
                 "device_readback",
 
+            "rcs_dbsm":
+                self.static_rcs_dbsm,
+
+            "rcs_limits":
+                self.static_rcs_limits,
+
             "vehicle_request_start_ns":
                 vehicle_request_start_ns,
 
@@ -1364,6 +1623,15 @@ class TestController:
 
             "estimated_scenario_distance":
                 radest_distance,
+
+            "rcs_dbsm":
+                self.dynamic_rcs_dbsm,
+
+            "rcs_constant_state":
+                self.dynamic_rcs_constant_state,
+
+            "rcs_limits":
+                self.dynamic_rcs_limits,
 
             "vehicle_request_start_ns":
                 vehicle_request_start_ns,
@@ -2037,6 +2305,11 @@ class TestController:
                 radest_distance=
                     self.radest_distance,
 
+                rcs={
+                    "value_dbsm": self.static_rcs_dbsm,
+                    "limits": self.static_rcs_limits
+                },
+
                 log_file=
                     log_file
             )
@@ -2077,7 +2350,16 @@ class TestController:
                         self.dynamic_direction,
 
                     "pre_hold_distance_m":
-                        self.dynamic_pre_hold_distance
+                        self.dynamic_pre_hold_distance,
+
+                    "rcs_dbsm":
+                        self.dynamic_rcs_dbsm,
+
+                    "rcs_constant_state":
+                        self.dynamic_rcs_constant_state,
+
+                    "rcs_limits":
+                        self.dynamic_rcs_limits
                 },
 
                 log_file=

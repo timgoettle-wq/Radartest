@@ -396,13 +396,41 @@ def skip_precheck():
 
 
 # ==================================================
+# API: STATISCHE RCS-GRENZEN ERMITTELN
+# ==================================================
+
+@app.post("/api/static/rcs-limits")
+@serialized_controller_access
+def prepare_static_measurement(
+    distance_m: float
+):
+
+    if controller is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Testsystem ist nicht verbunden"
+        )
+
+    try:
+        return controller.prepare_static_measurement(
+            distance_m
+        )
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=str(error)
+        )
+
+
+# ==================================================
 # API: STATISCHE MESSUNG STARTEN
 # ==================================================
 
 @app.post("/api/static/start")
 @serialized_controller_access
 def start_static_measurement(
-    distance_m: float
+    distance_m: float,
+    rcs_dbsm: float
 ):
 
     if controller is None:
@@ -417,7 +445,8 @@ def start_static_measurement(
 
         result = (
             controller.start_static_measurement(
-                distance_m
+                distance_m,
+                rcs_dbsm
             )
         )
 
@@ -457,6 +486,39 @@ def start_static_measurement(
 
 
 # ==================================================
+# API: DYNAMISCHE RCS-GRENZEN ERMITTELN
+# ==================================================
+
+@app.post("/api/dynamic/rcs-limits")
+@serialized_controller_access
+def prepare_dynamic_measurement(
+    start_distance_m: float,
+    end_distance_m: float,
+    velocity_kmh: float,
+    rcs_constant_state: int
+):
+
+    if controller is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Testsystem ist nicht verbunden"
+        )
+
+    try:
+        return controller.prepare_dynamic_measurement(
+            start_distance_m=start_distance_m,
+            end_distance_m=end_distance_m,
+            velocity_kmh=velocity_kmh,
+            rcs_constant_state=rcs_constant_state
+        )
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=str(error)
+        )
+
+
+# ==================================================
 # API: DYNAMISCHE MESSUNG STARTEN
 # ==================================================
 
@@ -465,7 +527,9 @@ def start_static_measurement(
 def start_dynamic_measurement(
     start_distance_m: float,
     end_distance_m: float,
-    velocity_kmh: float
+    velocity_kmh: float,
+    rcs_constant_state: int,
+    rcs_dbsm: float
 ):
 
     if controller is None:
@@ -482,7 +546,9 @@ def start_dynamic_measurement(
             controller.start_dynamic_measurement(
                 start_distance_m=start_distance_m,
                 end_distance_m=end_distance_m,
-                velocity_kmh=velocity_kmh
+                velocity_kmh=velocity_kmh,
+                rcs_constant_state=rcs_constant_state,
+                rcs_dbsm=rcs_dbsm
             )
         )
 

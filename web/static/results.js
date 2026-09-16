@@ -105,11 +105,22 @@ function testTypeLabel(type) {
 function parameterText(test) {
     if (test.type === "dynamic") {
         const parameters = test.parameters || {};
-        return formatNumber(parameters.start_distance_m, 1, " m") + " → "
+        let text = formatNumber(parameters.start_distance_m, 1, " m") + " → "
             + formatNumber(parameters.end_distance_m, 1, " m") + " · "
             + formatNumber(parameters.velocity_kmh, 1, " km/h");
+        if (parameters.rcs_dbsm !== null && parameters.rcs_dbsm !== undefined) {
+            text += " · " + formatNumber(parameters.rcs_dbsm, 1, " dBsm");
+            text += parameters.rcs_constant_state === 0
+                ? " · konstante RCS"
+                : " · variable RCS";
+        }
+        return text;
     }
-    return formatNumber(test.requested_distance, 1, " m");
+    let text = formatNumber(test.requested_distance, 1, " m");
+    if (test.rcs?.value_dbsm !== null && test.rcs?.value_dbsm !== undefined) {
+        text += " · " + formatNumber(test.rcs.value_dbsm, 1, " dBsm");
+    }
+    return text;
 }
 
 function showView(id) {
