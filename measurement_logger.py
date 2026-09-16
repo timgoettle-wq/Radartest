@@ -228,6 +228,45 @@ class MeasurementLogger:
                     "radest_distance_source"
                 ),
 
+            "rcs_dbsm":
+                measurement.get(
+                    "rcs_dbsm"
+                ),
+
+            "rcs_mode":
+                measurement.get(
+                    "rcs_mode"
+                ),
+
+            "rcs_constant_state":
+                measurement.get(
+                    "rcs_constant_state"
+                ),
+
+            "rcs_polarization":
+                (
+                    measurement.get("rcs_limits")
+                    or {}
+                ).get("polarization"),
+
+            "rcs_eirp_dbm":
+                (
+                    measurement.get("rcs_limits")
+                    or {}
+                ).get("eirp_dbm"),
+
+            "rcs_min_dbsm":
+                (
+                    measurement.get("rcs_limits")
+                    or {}
+                ).get("rcs_min_dbsm"),
+
+            "rcs_max_dbsm":
+                (
+                    measurement.get("rcs_limits")
+                    or {}
+                ).get("rcs_max_dbsm"),
+
             "estimated_scenario_distance_m":
                 measurement.get(
                     "estimated_scenario_distance"

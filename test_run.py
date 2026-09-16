@@ -178,6 +178,7 @@ class TestRun:
         self,
         requested_distance,
         radest_distance,
+        rcs_configuration,
         log_file
     ):
 
@@ -210,6 +211,9 @@ class TestRun:
 
             "radest_distance":
                 radest_distance,
+
+            "rcs":
+                rcs_configuration,
 
             "log_file":
                 Path(

@@ -263,7 +263,7 @@ class RadestDevice:
         return answer
     
     def scenario_constant_rcs(self, constant_rcs):
-        # constant_rcs 0 or 1. 0 = off, 1 = on
+        # Laut RadEsT-Handbuch: 0 = konstante RCS, 1 = variable RCS
         scpi_command = f"SCENARIO:RCS:CONST {constant_rcs}"
         answer = self.send_scpi_and_print_answer(scpi_command)
         return answer
