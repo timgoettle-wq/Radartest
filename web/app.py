@@ -402,8 +402,7 @@ def skip_precheck():
 @app.post("/api/static/start")
 @serialized_controller_access
 def start_static_measurement(
-    distance_m: float,
-    rcs_dbsm: float = 0.0
+    distance_m: float
 ):
 
     if controller is None:
@@ -418,8 +417,7 @@ def start_static_measurement(
 
         result = (
             controller.start_static_measurement(
-                distance_m,
-                rcs_dbsm
+                distance_m
             )
         )
 
@@ -467,8 +465,7 @@ def start_static_measurement(
 def start_dynamic_measurement(
     start_distance_m: float,
     end_distance_m: float,
-    velocity_kmh: float,
-    rcs_dbsm: float = 0.0
+    velocity_kmh: float
 ):
 
     if controller is None:
@@ -485,8 +482,7 @@ def start_dynamic_measurement(
             controller.start_dynamic_measurement(
                 start_distance_m=start_distance_m,
                 end_distance_m=end_distance_m,
-                velocity_kmh=velocity_kmh,
-                rcs_dbsm=rcs_dbsm
+                velocity_kmh=velocity_kmh
             )
         )
 

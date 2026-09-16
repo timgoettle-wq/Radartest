@@ -311,7 +311,6 @@ function formatPolarization(value) {
 
 function renderPrecheck(data) {
     const skipped = Boolean(data.skipped);
-    const configuration = data.radest_configuration || {};
     $("precheckResult").hidden = false;
     $("precheckSummary").className = "result-banner " + (skipped ? "warning" : "success");
     $("precheckSummary").textContent = skipped
@@ -321,12 +320,6 @@ function renderPrecheck(data) {
     $("frequency").textContent = skipped ? "Übersprungen" : formatFrequency(data.frequency_range);
     $("polarization").textContent = skipped ? "Übersprungen" : formatPolarization(data.polarization);
     $("power").textContent = skipped ? "Übersprungen" : formatPower(data.power);
-    $("airGap").textContent = skipped ? "Übersprungen" : fixed(configuration.air_gap_m) + " m";
-    $("centerFrequency").textContent = skipped ? "Übersprungen" : fixed(configuration.center_frequency_ghz) + " GHz";
-    $("bandwidth").textContent = skipped ? "Übersprungen" : fixed(configuration.bandwidth_ghz) + " GHz";
-    $("antennaPair").textContent = skipped
-        ? "Übersprungen"
-        : "Rx" + configuration.rx_antenna + " / Tx" + configuration.tx_antenna;
 }
 
 function updatePrecheckProgress(activePhase = null, completedPhases = [], errorPhase = null) {
@@ -399,16 +392,13 @@ async function skipPrecheck() {
 
 function staticConfiguration() {
     const distance = Number($("distanceInput").value);
-    const rcs = Number($("staticRcsInput").value);
     if (!Number.isFinite(distance) || distance <= 0) throw new Error("Distanz muss größer als 0 m sein.");
-    if (!Number.isFinite(rcs)) throw new Error("RCS muss eine gültige Zahl sein.");
     return {
         type: "static",
         title: "Statische Messung",
-        description: distance.toFixed(1) + " m konstante Zieldistanz | " + rcs.toFixed(1) + " dBsm",
-        resultParameters: distance.toFixed(1) + " m · " + rcs.toFixed(1) + " dBsm",
+        description: distance.toFixed(1) + " m konstante Zieldistanz",
+        resultParameters: distance.toFixed(1) + " m",
         url: "/api/static/start?distance_m=" + encodeURIComponent(distance)
-            + "&rcs_dbsm=" + encodeURIComponent(rcs)
     };
 }
 
@@ -416,20 +406,18 @@ function dynamicConfiguration() {
     const start = Number($("dynamicStartDistanceInput").value);
     const end = Number($("dynamicEndDistanceInput").value);
     const velocity = Number($("dynamicVelocityInput").value);
-    const rcs = Number($("dynamicRcsInput").value);
-    if (![start, end, velocity, rcs].every(Number.isFinite) || start <= 0 || end <= 0 || velocity <= 0) {
+    if (![start, end, velocity].every(Number.isFinite) || start <= 0 || end <= 0 || velocity <= 0) {
         throw new Error("Distanzen und Geschwindigkeit müssen größer als 0 sein.");
     }
     if (start === end) throw new Error("Start- und Enddistanz müssen unterschiedlich sein.");
     return {
         type: "dynamic",
         title: "Dynamische Messung",
-        description: start.toFixed(1) + " m → " + end.toFixed(1) + " m | " + velocity.toFixed(1) + " km/h | " + rcs.toFixed(1) + " dBsm",
-        resultParameters: start.toFixed(1) + " m → " + end.toFixed(1) + " m · " + velocity.toFixed(1) + " km/h · " + rcs.toFixed(1) + " dBsm",
+        description: start.toFixed(1) + " m → " + end.toFixed(1) + " m | " + velocity.toFixed(1) + " km/h",
+        resultParameters: start.toFixed(1) + " m → " + end.toFixed(1) + " m · " + velocity.toFixed(1) + " km/h",
         url: "/api/dynamic/start?start_distance_m=" + encodeURIComponent(start)
             + "&end_distance_m=" + encodeURIComponent(end)
             + "&velocity_kmh=" + encodeURIComponent(velocity)
-            + "&rcs_dbsm=" + encodeURIComponent(rcs)
     };
 }
 
@@ -444,8 +432,7 @@ function resetMeasurementDisplay(configuration) {
     $("measurementState").lastChild.textContent = "Live";
     ["requestedDistance", "radestDistance", "vehicleDistance", "distanceError", "angle",
         "relativeSpeed", "relativeAcceleration", "scenarioPhase", "scenarioProgress",
-        "scenarioDuration", "measurementElapsed", "measurementRcs",
-        "measurementRcsLimits"].forEach(id => $(id).textContent = "–");
+        "scenarioDuration", "measurementElapsed"].forEach(id => $(id).textContent = "–");
     $("scenarioStatus").textContent = "Läuft";
     $("stopButton").disabled = true;
     drawChart();
@@ -458,15 +445,9 @@ async function startConfiguredMeasurement(configuration) {
     uiState.currentMeasurement = configuration;
     resetMeasurementDisplay(configuration);
     showMeasurementScreen();
-    $("measurementState").lastChild.textContent = "RCS wird vorbereitet";
     try {
         const data = await apiRequest(configuration.url, {method: "POST"});
         uiState.logFile = data.log_file || null;
-        const limits = data.rcs_limits || {};
-        $("measurementRcs").textContent = fixed(data.rcs_dbsm) + " dBsm";
-        $("measurementRcsLimits").textContent = fixed(limits.rcs_min_dbsm)
-            + " bis " + fixed(limits.rcs_max_dbsm) + " dBsm";
-        $("measurementState").lastChild.textContent = "Live";
         if (configuration.type === "static") {
             $("requestedDistance").textContent = fixed(data.requested_distance);
             $("radestDistance").textContent = fixed(data.radest_distance);
@@ -552,13 +533,6 @@ function updateMeasurement(data) {
     $("vehicleDistance").textContent = fixed(data.vehicle?.distance?.value);
     $("distanceError").textContent = fixed(data.distance_error);
     $("measurementElapsed").textContent = fixed(data.elapsed_s);
-    if (Number.isFinite(numeric(data.rcs_dbsm))) {
-        $("measurementRcs").textContent = fixed(data.rcs_dbsm) + " dBsm";
-    }
-    if (data.rcs_limits) {
-        $("measurementRcsLimits").textContent = fixed(data.rcs_limits.rcs_min_dbsm)
-            + " bis " + fixed(data.rcs_limits.rcs_max_dbsm) + " dBsm";
-    }
     $("angle").textContent = signalText(data.vehicle?.angle);
     $("relativeSpeed").textContent = signalText(data.vehicle?.relative_speed);
     $("relativeAcceleration").textContent = signalText(data.vehicle?.relative_acceleration);
@@ -842,25 +816,21 @@ function restoredConfiguration(data) {
         const start = Number(data.scenario_start_distance);
         const end = Number(data.scenario_end_distance);
         const velocity = Number(data.scenario_velocity_kmh);
-        const rcs = Number.isFinite(Number(data.rcs_dbsm)) ? Number(data.rcs_dbsm) : 0;
         return {
             type: "dynamic", title: "Dynamische Messung",
-            description: fixed(start, 1) + " m → " + fixed(end, 1) + " m | " + fixed(velocity, 1) + " km/h | " + fixed(rcs, 1) + " dBsm",
-            resultParameters: fixed(start, 1) + " m → " + fixed(end, 1) + " m · " + fixed(velocity, 1) + " km/h · " + fixed(rcs, 1) + " dBsm",
+            description: fixed(start, 1) + " m → " + fixed(end, 1) + " m | " + fixed(velocity, 1) + " km/h",
+            resultParameters: fixed(start, 1) + " m → " + fixed(end, 1) + " m · " + fixed(velocity, 1) + " km/h",
             url: "/api/dynamic/start?start_distance_m=" + encodeURIComponent(start)
                 + "&end_distance_m=" + encodeURIComponent(end)
                 + "&velocity_kmh=" + encodeURIComponent(velocity)
-                + "&rcs_dbsm=" + encodeURIComponent(rcs)
         };
     }
     const distance = Number(data.requested_distance);
-    const rcs = Number.isFinite(Number(data.rcs_dbsm)) ? Number(data.rcs_dbsm) : 0;
     return {
         type: "static", title: "Statische Messung",
-        description: fixed(distance, 1) + " m konstante Zieldistanz | " + fixed(rcs, 1) + " dBsm",
-        resultParameters: fixed(distance, 1) + " m · " + fixed(rcs, 1) + " dBsm",
+        description: fixed(distance, 1) + " m konstante Zieldistanz",
+        resultParameters: fixed(distance, 1) + " m",
         url: "/api/static/start?distance_m=" + encodeURIComponent(distance)
-            + "&rcs_dbsm=" + encodeURIComponent(rcs)
     };
 }
 

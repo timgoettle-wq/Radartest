@@ -104,10 +104,6 @@
                     <div class="metric-card"><span>Frequenzbereich</span><strong id="frequency">–</strong></div>
                     <div class="metric-card"><span>Polarisation</span><strong id="polarization">–</strong></div>
                     <div class="metric-card"><span>Empfangsleistung</span><strong id="power">–</strong></div>
-                    <div class="metric-card"><span>Luftspalt</span><strong id="airGap">–</strong></div>
-                    <div class="metric-card"><span>Mittenfrequenz</span><strong id="centerFrequency">–</strong></div>
-                    <div class="metric-card"><span>Bandbreite</span><strong id="bandwidth">–</strong></div>
-                    <div class="metric-card"><span>Antennenpaar</span><strong id="antennaPair">–</strong></div>
                 </div>
             </div>
             <div class="screen-actions"><button class="secondary" data-go-step="2" type="button">Zurück</button><button id="toTestsButton" class="primary" type="button" disabled>Weiter zur Prüfung</button></div>
@@ -125,9 +121,7 @@
                     <div><p class="eyebrow">Konstantes Ziel</p><h2>Statische Messung</h2><p>Definiertes Radarziel bei konstanter Distanz.</p></div>
                     <div class="parameter-grid static-parameter-grid">
                         <label for="distanceInput">Distanz <span>m</span><input id="distanceInput" type="number" value="15.0" step="0.1" min="0.1"></label>
-                        <label for="staticRcsInput">RCS <span>dBsm</span><input id="staticRcsInput" type="number" value="0" step="0.1"></label>
                     </div>
-                    <p class="parameter-hint">Der zulässige RCS-Bereich wird beim Start automatisch für diese Distanz ermittelt.</p>
                     <button id="staticButton" class="primary" type="button">Statische Messung starten</button>
                 </article>
                 <article class="test-type-card">
@@ -136,9 +130,7 @@
                         <label for="dynamicStartDistanceInput">Startdistanz <span>m</span><input id="dynamicStartDistanceInput" type="number" value="5.0" step="0.1" min="0.1"></label>
                         <label for="dynamicEndDistanceInput">Enddistanz <span>m</span><input id="dynamicEndDistanceInput" type="number" value="15.0" step="0.1" min="0.1"></label>
                         <label for="dynamicVelocityInput">Geschwindigkeit <span>km/h</span><input id="dynamicVelocityInput" type="number" value="2" step="0.1" min="0.1"></label>
-                        <label for="dynamicRcsInput">RCS <span>dBsm</span><input id="dynamicRcsInput" type="number" value="0" step="0.1"></label>
                     </div>
-                    <p class="parameter-hint">Konstante RCS; der zulässige Bereich wird für das vollständige Szenario ermittelt.</p>
                     <button id="dynamicButton" class="primary" type="button">Dynamische Messung starten</button>
                 </article>
             </div>
@@ -167,8 +159,6 @@
                         <div><dt>Fortschritt</dt><dd id="scenarioProgress">–</dd></div>
                         <div><dt>Gesamtdauer</dt><dd><span id="scenarioDuration">–</span> s</dd></div>
                         <div><dt>Messzeit</dt><dd><span id="measurementElapsed">–</span> s</dd></div>
-                        <div><dt>RCS</dt><dd id="measurementRcs">–</dd></div>
-                        <div><dt>RCS-Bereich</dt><dd id="measurementRcsLimits">–</dd></div>
                         <div><dt>Winkel</dt><dd id="angle">–</dd></div>
                         <div><dt>Relativgeschwindigkeit</dt><dd id="relativeSpeed">–</dd></div>
                         <div><dt>Relativbeschleunigung</dt><dd id="relativeAcceleration">–</dd></div>

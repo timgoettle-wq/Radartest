@@ -71,15 +71,20 @@ function formatNumber(value, digits = 2, unit = "") {
     return Number.isFinite(number) ? number.toFixed(digits).replace(".", ",") + unit : "–";
 }
 
-function testTypeLabel(type) {
-    return type === "dynamic" ? "Dynamische Messung" : type === "static" ? "Statische Messung" : type || "Unbekannte Messung";
+function formatPrecheckValue(value, unit) {
+    if (value === null || value === undefined || value === "") return "–";
+    const formatted = Array.isArray(value) ? value.join(" – ") : String(value);
+    return formatted.toLocaleLowerCase().includes(unit.toLocaleLowerCase())
+        ? formatted
+        : formatted + " " + unit;
 }
 
-function polarizationLabel(value) {
+function formatPolarization(value) {
     if (value === null || value === undefined || value === "") return "–";
+
     const raw = Array.isArray(value) ? value.join(", ") : String(value).trim();
     const code = (Array.isArray(value) ? String(value[0]) : raw.split(",")[0]).trim().toUpperCase();
-    return ({
+    const labels = {
         "5": "Horizontal",
         "8": "Vertikal",
         "7": "+45°",
@@ -88,23 +93,23 @@ function polarizationLabel(value) {
         "V": "Vertikal",
         "P45": "+45°",
         "M45": "−45°"
-    })[code] || raw;
+    };
+
+    return labels[code] || raw;
+}
+
+function testTypeLabel(type) {
+    return type === "dynamic" ? "Dynamische Messung" : type === "static" ? "Statische Messung" : type || "Unbekannte Messung";
 }
 
 function parameterText(test) {
     if (test.type === "dynamic") {
         const parameters = test.parameters || {};
-        const text = formatNumber(parameters.start_distance_m, 1, " m") + " → "
+        return formatNumber(parameters.start_distance_m, 1, " m") + " → "
             + formatNumber(parameters.end_distance_m, 1, " m") + " · "
             + formatNumber(parameters.velocity_kmh, 1, " km/h");
-        return parameters.rcs_dbsm === null || parameters.rcs_dbsm === undefined
-            ? text
-            : text + " · " + formatNumber(parameters.rcs_dbsm, 1, " dBsm");
     }
-    const text = formatNumber(test.requested_distance, 1, " m");
-    return test.rcs?.rcs_dbsm === null || test.rcs?.rcs_dbsm === undefined
-        ? text
-        : text + " · " + formatNumber(test.rcs.rcs_dbsm, 1, " dBsm");
+    return formatNumber(test.requested_distance, 1, " m");
 }
 
 function showView(id) {
@@ -136,12 +141,10 @@ async function loadResults() {
 
 function renderResults() {
     const query = $("resultSearch").value.trim().toLocaleLowerCase("de");
-    const status = $("resultStatusFilter").value;
     const type = $("resultTypeFilter").value;
     const visible = resultState.results.filter(run => {
         const searchText = (run.vehicle_name + " " + run.run_id).toLocaleLowerCase("de");
         return (!query || searchText.includes(query))
-            && (!status || run.status === status)
             && (!type || (run.test_types || []).includes(type));
     });
     const body = $("resultsTableBody");
@@ -159,7 +162,6 @@ function renderResults() {
         const vehicleCell = row.insertCell();
         vehicleCell.append(textElement("strong", run.vehicle_name));
         vehicleCell.append(textElement("small", run.run_id));
-        row.insertCell().append(badge(run.status));
         row.insertCell().textContent = String(run.test_count);
         row.insertCell().append(badge(run.quick_check_status));
         row.insertCell().append(badge(run.precheck_status));
@@ -199,13 +201,13 @@ function renderRun(data) {
     const summary = data.summary;
     const run = data.run;
     $("runDetailTitle").textContent = summary.vehicle_name;
+    $("runBreadcrumb").textContent = summary.vehicle_name;
     $("runDetailSubtitle").textContent = summary.run_id;
     $("downloadRun").href = "/api/results/" + encodeURIComponent(summary.run_id) + "/download";
     const facts = $("runFacts");
     facts.replaceChildren(
         fact("Start", formatDate(run.start_time)),
         fact("Ende", formatDate(run.end_time)),
-        fact("Status", statusLabels[run.status] || run.status),
         fact("Git-Commit", run.software?.git_commit || "Nicht erfasst")
     );
     renderQuickCheck(run.quick_check, summary.quick_check_status);
@@ -288,17 +290,10 @@ function renderPrecheck(precheck, status) {
     }
     const values = document.createElement("div");
     values.className = "compact-facts";
-    const configuration = precheck.radest_configuration || {};
     values.append(
-        compactFact("Polarisation", polarizationLabel(precheck.polarization)),
-        compactFact("Frequenzbereich", (Array.isArray(precheck.frequency_range) ? precheck.frequency_range.join(" – ") : precheck.frequency_range ?? "–") + " GHz"),
-        compactFact("Leistung", formatNumber(precheck.power, 2, " dBm")),
-        compactFact("Luftspalt", formatNumber(configuration.air_gap_m, 2, " m")),
-        compactFact("Mittenfrequenz", formatNumber(configuration.center_frequency_ghz, 2, " GHz")),
-        compactFact("Bandbreite", formatNumber(configuration.bandwidth_ghz, 2, " GHz")),
-        compactFact("Antennenpaar", configuration.rx_antenna && configuration.tx_antenna
-            ? "Rx" + configuration.rx_antenna + " / Tx" + configuration.tx_antenna
-            : "–")
+        compactFact("Polarisation", formatPolarization(precheck.polarization)),
+        compactFact("Frequenzbereich", formatPrecheckValue(precheck.frequency_range, "GHz")),
+        compactFact("Leistung", formatPrecheckValue(precheck.power, "dBm"))
     );
     content.append(values);
 }
@@ -343,11 +338,9 @@ async function openMeasurement(runId, testId, push = true) {
 function renderMeasurement(data) {
     const measurement = data.measurement;
     const summary = data.summary;
-    const rcs = measurement.type === "dynamic"
-        ? measurement.parameters || {}
-        : measurement.rcs || {};
-    const rcsLimits = rcs.rcs_limits || rcs.limits || {};
     $("archiveMeasurementTitle").textContent = testTypeLabel(measurement.type);
+    $("measurementBreadcrumb").textContent = testTypeLabel(measurement.type);
+    $("backToRun").textContent = data.run.vehicle_name || "TestRun";
     $("archiveMeasurementSubtitle").textContent = data.run.vehicle_name + " · " + parameterText(measurement);
     $("archiveDuration").textContent = formatNumber(summary.duration_s, 2, " s");
     $("archiveSamples").textContent = String(summary.sample_count);
@@ -362,12 +355,6 @@ function renderMeasurement(data) {
         fact("Status", statusLabels[measurement.status] || measurement.status),
         fact("Start", formatDate(measurement.start_time)),
         fact("Ende", formatDate(measurement.end_time)),
-        fact("RCS", formatNumber(rcs.rcs_dbsm, 2, " dBsm")),
-        fact("RCS-Bereich", rcsLimits.rcs_min_dbsm === null || rcsLimits.rcs_min_dbsm === undefined
-            ? "–"
-            : formatNumber(rcsLimits.rcs_min_dbsm, 2, " dBsm") + " bis "
-                + formatNumber(rcsLimits.rcs_max_dbsm, 2, " dBsm")),
-        fact("RCS-EIRP", formatNumber(rcsLimits.eirp_dbm, 2, " dBm")),
         fact("Abschlussgrund", measurement.end_reason || "–"),
         fact("Fehlerhafte Messpunkte", String(summary.error_sample_count))
     );
@@ -388,6 +375,7 @@ function drawArchiveChart(points) {
     context.font = "12px Arial";
 
     if (valid.length < 2) {
+        window.DistanceChartTooltip?.clear(canvas);
         context.fillStyle = "#63756d";
         context.textAlign = "center";
         context.fillText("Für diesen Graphen sind nicht genügend Messpunkte vorhanden.", width / 2, height / 2);
@@ -422,6 +410,17 @@ function drawArchiveChart(points) {
     context.textAlign = "right"; context.fillText(maxX.toFixed(1) + " s", width - pad.right, height - 12);
     context.save(); context.translate(14, height / 2); context.rotate(-Math.PI / 2);
     context.textAlign = "center"; context.fillText("Distanz [m]", 0, 0); context.restore();
+    window.DistanceChartTooltip?.update(canvas, {
+        points: valid,
+        timeKey: "elapsed_s",
+        radestKey: "radest_distance_m",
+        vehicleKey: "vehicle_distance_m",
+        x,
+        y,
+        pad,
+        width,
+        height
+    });
 }
 
 function drawSeries(context, points, key, x, y, color) {
@@ -471,9 +470,9 @@ async function restoreFromLocation() {
 
 $("reloadResults").addEventListener("click", loadResults);
 $("resultSearch").addEventListener("input", renderResults);
-$("resultStatusFilter").addEventListener("change", renderResults);
 $("resultTypeFilter").addEventListener("change", renderResults);
 $("backToResults").addEventListener("click", () => { showView("resultsOverview"); setLocation(); });
+$("backToResultsFromMeasurement").addEventListener("click", () => { showView("resultsOverview"); setLocation(); });
 $("backToRun").addEventListener("click", () => { showView("runDetail"); setLocation(resultState.currentRun.summary.run_id); });
 window.addEventListener("popstate", restoreFromLocation);
 window.addEventListener("resize", () => {
