@@ -646,6 +646,14 @@ class TestController:
         return rcs_dbsm
 
 
+    def _set_rcs_antenna_pair(self):
+
+        # Kalibriertes Antennenpaar der mittleren Antennengruppe.
+        # Diese Kombination verwendet auch die R&S-RadEsT-App.
+        self.radest.system_set_rx(6)
+        self.radest.system_set_tx(7)
+
+
     # ==================================================
     # STATISCHE MESSUNG VORBEREITEN
     # ==================================================
@@ -730,6 +738,13 @@ class TestController:
         self.requested_distance = float(
             distance_m
         )
+
+
+        # --------------------------------------------------
+        # Kalibriertes Antennenpaar aus Gruppe 2 auswählen
+        # --------------------------------------------------
+
+        self._set_rcs_antenna_pair()
 
 
         # --------------------------------------------------
@@ -961,6 +976,13 @@ class TestController:
             self._measurement_error = None
 
             self._measurement_sequence = 0
+
+
+        # --------------------------------------------------
+        # Kalibriertes Antennenpaar aus Gruppe 2 auswählen
+        # --------------------------------------------------
+
+        self._set_rcs_antenna_pair()
 
 
         # --------------------------------------------------
