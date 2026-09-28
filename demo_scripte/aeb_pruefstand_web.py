@@ -594,10 +594,10 @@ PAGE = r'''<!doctype html>
     <div class="form">
       <div class="field span2"><label>Fahrzeug</label><select id="vehicle"></select></div>
       <div class="field"><label>CAN-Kanal</label><input id="channel" value="can0"></div>
-      <div class="field"><label>Testart</label><select id="type"><option value="dynamic">Dynamische Annäherung</option><option value="constant">Statisches Objekt</option></select></div>
+      <div class="field"><label>Testart</label><select id="type"><option value="dynamic">Dynamisch</option><option value="constant">Statisch</option></select></div>
       <div class="field dynamic"><label>Startdistanz [m]</label><input id="startDistance" type="number" min="0.1" step="0.1" value="40"></div>
       <div class="field dynamic"><label>Enddistanz [m]</label><input id="endDistance" type="number" min="0.1" step="0.1" value="5"></div>
-      <div class="field dynamic"><label>Schließgeschwindigkeit [km/h]</label><input id="velocity" type="number" min="0.1" step="0.1" value="10"></div>
+      <div class="field dynamic"><label>Relativgeschwindigkeit [km/h]</label><input id="velocity" type="number" min="0.1" step="0.1" value="10"></div>
       <div class="field dynamic"><label>Haltezeit vorher [s]</label><input id="preHold" type="number" min="0" step="0.1" value="2"></div>
       <div class="field dynamic"><label>Haltezeit nachher [s]</label><input id="postHold" type="number" min="0" step="0.1" value="3"></div>
       <div class="field constant hidden"><label>Zielabstand [m]</label><input id="distance" type="number" min="0.1" step="0.1" value="20"></div>
