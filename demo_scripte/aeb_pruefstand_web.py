@@ -99,10 +99,12 @@ def validate_config(config):
         if config.distance_m < 0.1 or config.duration_s < 0.1:
             raise ValueError("Distanz und Messdauer muessen groesser als 0 sein.")
     else:
-        if config.start_distance_m <= config.end_distance_m:
-            raise ValueError("Bei der Annaeherung muss die Startdistanz groesser als die Enddistanz sein.")
-        if config.end_distance_m < 0.1 or config.velocity_kmh <= 0:
-            raise ValueError("Enddistanz und Geschwindigkeit muessen groesser als 0 sein.")
+        if config.start_distance_m < 0.1 or config.end_distance_m < 0.1:
+            raise ValueError("Start- und Enddistanz muessen groesser als 0 sein.")
+        if math.isclose(config.start_distance_m, config.end_distance_m, abs_tol=1e-9):
+            raise ValueError("Start- und Enddistanz muessen sich bei einem dynamischen Test unterscheiden.")
+        if config.velocity_kmh <= 0:
+            raise ValueError("Die Relativgeschwindigkeit muss groesser als 0 sein.")
         if config.pre_hold_s < 0 or config.post_hold_s < 0:
             raise ValueError("Haltezeiten duerfen nicht negativ sein.")
     if config.set_attenuation:
@@ -413,10 +415,19 @@ class AebWebRunner:
                         lambda _elapsed: scenario["distance_m"], 0.0,
                     )
                 else:
+                    direction = (
+                        "Annaeherung"
+                        if scenario["end_distance_m"] < scenario["start_distance_m"]
+                        else "Entfernung"
+                    )
+                    self._set_state(
+                        "laeuft",
+                        f"Haltezeit vor Bewegung: {scenario['pre_hold_s']:.1f} s.",
+                    )
                     self._sample_phase(
                         writer, file, rows, monitor, diagnostic_monitor, radar_monitor, origin,
                         scenario["pre_hold_s"], "pre_hold",
-                        lambda _elapsed: scenario["start_distance_m"], scenario["velocity_kmh"],
+                        lambda _elapsed: scenario["start_distance_m"], 0.0,
                     )
 
                     if not self.stop_event.is_set():
@@ -434,6 +445,7 @@ class AebWebRunner:
                             abs(scenario["end_distance_m"] - scenario["start_distance_m"])
                             / (scenario["velocity_kmh"] / 3.6)
                         )
+                        self._set_state("laeuft", f"Dynamische {direction} laeuft.")
                         self._sample_phase(
                             writer, file, rows, monitor, diagnostic_monitor, radar_monitor, origin,
                             movement_duration, "moving",
@@ -441,11 +453,21 @@ class AebWebRunner:
                             scenario["velocity_kmh"],
                         )
 
+                    if scenario_thread is not None and not self.stop_event.is_set():
+                        while scenario_thread.is_alive() and not self.stop_event.is_set():
+                            scenario_thread.join(timeout=0.05)
+
                     if not self.stop_event.is_set():
+                        if scenario_error:
+                            raise RuntimeError(f"RadEsT-Szenariofehler: {scenario_error[0]}")
+                        self._set_state(
+                            "laeuft",
+                            f"Haltezeit nach Bewegung: {scenario['post_hold_s']:.1f} s.",
+                        )
                         self._sample_phase(
                             writer, file, rows, monitor, diagnostic_monitor, radar_monitor, origin,
                             scenario["post_hold_s"], "post_hold",
-                            lambda _elapsed: scenario["end_distance_m"], scenario["velocity_kmh"],
+                            lambda _elapsed: scenario["end_distance_m"], 0.0,
                         )
 
             if scenario_thread is not None and scenario_thread.is_alive():
@@ -594,10 +616,10 @@ PAGE = r'''<!doctype html>
     <div class="form">
       <div class="field span2"><label>Fahrzeug</label><select id="vehicle"></select></div>
       <div class="field"><label>CAN-Kanal</label><input id="channel" value="can0"></div>
-      <div class="field"><label>Testart</label><select id="type"><option value="dynamic">Dynamische Annäherung</option><option value="constant">Statisches Objekt</option></select></div>
+      <div class="field"><label>Testart</label><select id="type"><option value="dynamic">Dynamisch</option><option value="constant">Statisch</option></select></div>
       <div class="field dynamic"><label>Startdistanz [m]</label><input id="startDistance" type="number" min="0.1" step="0.1" value="40"></div>
       <div class="field dynamic"><label>Enddistanz [m]</label><input id="endDistance" type="number" min="0.1" step="0.1" value="5"></div>
-      <div class="field dynamic"><label>Schließgeschwindigkeit [km/h]</label><input id="velocity" type="number" min="0.1" step="0.1" value="10"></div>
+      <div class="field dynamic"><label>Relativgeschwindigkeit [km/h]</label><input id="velocity" type="number" min="0.1" step="0.1" value="10"></div>
       <div class="field dynamic"><label>Haltezeit vorher [s]</label><input id="preHold" type="number" min="0" step="0.1" value="2"></div>
       <div class="field dynamic"><label>Haltezeit nachher [s]</label><input id="postHold" type="number" min="0" step="0.1" value="3"></div>
       <div class="field constant hidden"><label>Zielabstand [m]</label><input id="distance" type="number" min="0.1" step="0.1" value="20"></div>
