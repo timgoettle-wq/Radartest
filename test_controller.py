@@ -526,11 +526,21 @@ class TestController:
             polarization_setting
         )
 
+        tx_antenna, rx_antenna = (
+            (6, 7)
+            if polarization_setting in {"H", "V"}
+            else (5, 5)
+        )
+        self.radest.system_set_tx(tx_antenna)
+        self.radest.system_set_rx(rx_antenna)
+
         return {
             "status": "running",
             "phase": "frequency",
             "polarization": self.polarization,
-            "polarization_setting": polarization_setting
+            "polarization_setting": polarization_setting,
+            "tx_antenna": tx_antenna,
+            "rx_antenna": rx_antenna
         }
 
 
