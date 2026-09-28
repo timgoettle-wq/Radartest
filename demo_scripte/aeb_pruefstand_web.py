@@ -572,14 +572,14 @@ def stop_test():
 @app.websocket("/ws")
 async def websocket_status(websocket: WebSocket):
     await websocket.accept()
-    last_sequence = -1
+    include_history = True
     try:
         while True:
-            snapshot = runner.snapshot(include_history=last_sequence < 0)
-            if snapshot["sequence"] != last_sequence:
-                await websocket.send_json(snapshot)
-                last_sequence = snapshot["sequence"]
-            await asyncio.sleep(0.05)
+            await websocket.send_json(
+                runner.snapshot(include_history=include_history)
+            )
+            include_history = False
+            await asyncio.sleep(0.1)
     except WebSocketDisconnect:
         pass
 
