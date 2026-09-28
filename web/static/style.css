@@ -420,6 +420,7 @@ button.primary,.database-page button.secondary,.database-page button.danger,.res
 .results-table td strong,.results-table td small {display:block;}
 .results-table td small {max-width:330px;margin-top:4px;color:var(--text-muted);overflow-wrap:anywhere;}
 .page-header-actions {display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap;}
+.page-header-actions .button-link {margin:0;}
 .button-link {display:inline-flex;align-items:center;justify-content:center;border-radius:7px;padding:10px 15px;text-decoration:none;font-weight:700;white-space:nowrap;}
 .button-link.primary {background:var(--green-primary);color:white;}
 .button-link.secondary {background:#e4f0e9;color:var(--green-dark);}
