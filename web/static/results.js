@@ -28,8 +28,8 @@ function statusClass(status) {
     return "neutral";
 }
 
-async function apiRequest(url) {
-    const response = await fetch(url);
+async function apiRequest(url, options = {}) {
+    const response = await fetch(url, options);
     const text = await response.text();
     let data;
 
@@ -205,6 +205,39 @@ async function openRun(runId, push = true) {
         if (push) setLocation(runId);
     } catch (error) {
         showMessage("TestRun konnte nicht geladen werden: " + error.message, true);
+    }
+}
+
+async function deleteCurrentRun() {
+    const summary = resultState.currentRun?.summary;
+    if (!summary) return;
+
+    const confirmed = window.confirm(
+        `TestRun "${summary.run_id}" von ${summary.vehicle_name} vollständig löschen?\n\n`
+        + "Dabei werden run.json und alle zugehörigen Messdateien dauerhaft entfernt."
+    );
+    if (!confirmed) return;
+
+    const button = $("deleteRun");
+    button.disabled = true;
+    button.textContent = "Wird gelöscht …";
+    showMessage("TestRun wird gelöscht …");
+
+    try {
+        await apiRequest("/api/results/" + encodeURIComponent(summary.run_id), {
+            method: "DELETE"
+        });
+        resultState.currentRun = null;
+        resultState.currentMeasurement = null;
+        showView("resultsOverview");
+        setLocation();
+        await loadResults();
+        showMessage("TestRun wurde vollständig gelöscht.");
+    } catch (error) {
+        showMessage("TestRun konnte nicht gelöscht werden: " + error.message, true);
+    } finally {
+        button.disabled = false;
+        button.textContent = "TestRun löschen";
     }
 }
 
@@ -480,6 +513,7 @@ async function restoreFromLocation() {
 }
 
 $("reloadResults").addEventListener("click", loadResults);
+$("deleteRun").addEventListener("click", deleteCurrentRun);
 $("resultSearch").addEventListener("input", renderResults);
 $("resultTypeFilter").addEventListener("change", renderResults);
 $("backToResults").addEventListener("click", () => { showView("resultsOverview"); setLocation(); });
