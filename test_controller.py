@@ -889,8 +889,8 @@ class TestController:
         end_distance_m,
         velocity_kmh,
         rcs_constant_state,
-        pre_hold_s=2.0,
-        post_hold_s=2.0
+        pre_hold_s=5.0,
+        post_hold_s=5.0
     ):
 
         self._check_connection()
