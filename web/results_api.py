@@ -1,5 +1,6 @@
 import csv
 import json
+import shutil
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
@@ -250,6 +251,24 @@ def download_run(run_id: str):
         media_type="application/json",
         filename=f"{run_id}_run.json",
     )
+
+
+@router.delete("/{run_id}")
+def delete_result(run_id: str):
+    directory = _run_directory(run_id)
+
+    try:
+        shutil.rmtree(directory)
+    except OSError as error:
+        raise HTTPException(
+            status_code=500,
+            detail=f"TestRun kann nicht gelöscht werden: {error}",
+        ) from error
+
+    return {
+        "deleted": True,
+        "run_id": run_id,
+    }
 
 
 @router.get("/{run_id}")
