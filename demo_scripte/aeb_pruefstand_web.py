@@ -99,10 +99,12 @@ def validate_config(config):
         if config.distance_m < 0.1 or config.duration_s < 0.1:
             raise ValueError("Distanz und Messdauer muessen groesser als 0 sein.")
     else:
-        if config.start_distance_m <= config.end_distance_m:
-            raise ValueError("Bei der Annaeherung muss die Startdistanz groesser als die Enddistanz sein.")
-        if config.end_distance_m < 0.1 or config.velocity_kmh <= 0:
-            raise ValueError("Enddistanz und Geschwindigkeit muessen groesser als 0 sein.")
+        if config.start_distance_m < 0.1 or config.end_distance_m < 0.1:
+            raise ValueError("Start- und Enddistanz muessen groesser als 0 sein.")
+        if config.start_distance_m == config.end_distance_m:
+            raise ValueError("Start- und Enddistanz muessen unterschiedlich sein.")
+        if config.velocity_kmh <= 0:
+            raise ValueError("Die Relativgeschwindigkeit muss groesser als 0 sein.")
         if config.pre_hold_s < 0 or config.post_hold_s < 0:
             raise ValueError("Haltezeiten duerfen nicht negativ sein.")
     if config.set_attenuation:
