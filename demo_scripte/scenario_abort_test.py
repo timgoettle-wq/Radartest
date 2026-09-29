@@ -18,9 +18,20 @@ Beispiele fuer BEFEHL (--befehl): "*IDN?" (harmlos, Standard),
 *RST und SYST:PRES setzen Polarisation, Antennen, Luftspalt usw. auf
 Werkseinstellungen zurueck. Danach muss der Precheck wiederholt werden.
 
-Ob das Ziel wirklich stehen bleibt, sieht man am zuverlaessigsten am
-Fahrzeugradar. Dazu VEHICLE_ID setzen (oder --fahrzeug angeben). Dann wird
-parallel das Signal "distance" ueber CAN mitgelesen.
+Nachweis ohne Fahrzeug: Direkt nach dem Abbruchversuch startet das Skript
+auf der noch offenen Verbindung ein neues Szenario (abschaltbar mit
+--kein-neustart) und misst, wann dessen Antwort kommt:
+
+    Antwort ca. Szenariodauer nach dem Neustart
+        -> das Geraet hat sofort neu begonnen, der Abbruch hat funktioniert.
+    Antwort ca. Szenariodauer nach dem Ende des ersten Szenarios
+        -> das neue Szenario musste warten, der Abbruch hat nicht gewirkt.
+
+Beim Referenzlauf "warten" wird kein neues Szenario gestartet.
+
+Zusaetzlich kann das Fahrzeugradar mitgelesen werden. Dazu VEHICLE_ID setzen
+(oder --fahrzeug angeben). Dann wird parallel das Signal "distance" ueber
+CAN protokolliert.
 
 Voraussetzung: Polarisation und Antennen sind am RadEsT bereits passend
 eingestellt (z. B. durch einen vorherigen Precheck in der Weboberflaeche).
@@ -76,6 +87,9 @@ ABORT_AFTER_S = 5.0
 
 # So lange wird nach dem erwarteten Szenarioende noch beobachtet.
 OBSERVE_AFTER_END_S = 5.0
+
+# Abweichung, bis zu der eine Antwortzeit noch einer Erwartung zugeordnet wird.
+TIMING_TOLERANCE_S = 3.0
 
 # None = kein Fahrzeug mitlesen, sonst ID aus der Datenbank
 VEHICLE_ID = None
@@ -356,7 +370,7 @@ def reconnect(log, name, max_wait_s=30.0):
     return None
 
 
-def run(method, command, vehicle_id):
+def run(method, command, vehicle_id, restart=True):
     run_directory = (
         PROJECT_ROOT
         / "test_runs"
@@ -372,6 +386,8 @@ def run(method, command, vehicle_id):
     duration_s = abs(END_DISTANCE_M - START_DISTANCE_M) / (VELOCITY_KMH / 3.6)
     trigger_t_s = None
     abort_t_s = None
+    restart_t_s = None
+    restart_connection = None
 
     try:
         log.write("skript", "methode", f"{method}  befehl={command!r}")
@@ -410,6 +426,7 @@ def run(method, command, vehicle_id):
                 # Antwortet das Geraet schon waehrend des Szenarios?
                 if new_connection is not None:
                     new_connection.query("*IDN?", timeout_s=5.0)
+                    restart_connection = new_connection
 
             elif method == "zweite_verbindung":
                 second = RawScpiConnection("zweite", log)
@@ -418,16 +435,33 @@ def run(method, command, vehicle_id):
                     second.connect()
                     connections.append(second)
                     second.query(command, timeout_s=5.0)
+                    restart_connection = second
                 except OSError as error:
                     log.write("zweite", "verbinden_fehler", repr(error))
 
             elif method == "gleiche_verbindung":
                 main.send(command)
+                restart_connection = main
 
             log.write("skript", "abbruch_ende", method)
 
-        # Bis nach dem erwarteten Szenarioende beobachten.
+            # Laesst sich direkt ein neues Szenario starten?
+            if restart and restart_connection is not None:
+                restart_t_s = restart_connection.send("SCENARIO:TRIGGER")
+
+        # Bis nach dem erwarteten Szenarioende beobachten. Mit Neustart so
+        # lange, dass auch ein wartendes zweites Szenario fertig werden kann.
         observe_until = end_t_s + OBSERVE_AFTER_END_S
+
+        if restart_t_s is not None:
+            observe_until = (
+                max(end_t_s, restart_t_s) + duration_s + OBSERVE_AFTER_END_S
+            )
+
+        print(
+            f"Beobachtung laeuft bis {observe_until - trigger_t_s:.0f} s "
+            "nach dem Start ..."
+        )
 
         while log.now() < observe_until:
             time.sleep(0.2)
@@ -474,10 +508,28 @@ def run(method, command, vehicle_id):
             and source in ("neu", "zweite") and event == "RX"
         ]
 
+        restart_rx = []
+
+        if restart_t_s is not None:
+            restart_rx = [
+                t_s
+                for t_s, source, event, data in log.events
+                if restart_t_s < t_s <= observe_end_t_s
+                and source == restart_connection.name and event == "RX"
+            ]
+
         print_summary(
             method, duration_s, trigger_t_s, abort_t_s,
             rx_after_trigger, rx_other, state_before, state_after
         )
+
+        if restart_t_s is not None:
+            print_restart_verdict(
+                duration_s, trigger_t_s, restart_t_s, restart_rx
+            )
+        elif method != "warten":
+            print("\nKein neues Szenario gestartet.")
+
         print(f"\nProtokoll: {log.file_path}")
 
     finally:
@@ -540,10 +592,62 @@ def print_summary(method, duration_s, trigger_t_s, abort_t_s,
         )
 
     print(
-        "\nHinweis: Ob das Ziel tatsaechlich gestoppt hat, zeigen die "
-        "Fahrzeugwerte\n(distance) im Protokoll. Ohne Fahrzeug nur die "
-        "Anzeige am RadEsT beobachten."
+        "\nHinweis: Ob der Abbruch gewirkt hat, zeigt die Bewertung des "
+        "neuen Szenarios\nunten. Mit --fahrzeug zusaetzlich die "
+        "Fahrzeugwerte (distance) im Protokoll."
     )
+
+
+def print_restart_verdict(duration_s, trigger_t_s, restart_t_s, restart_rx):
+    """Bewertet anhand der Antwortzeit, ob das neue Szenario sofort lief."""
+
+    end_t_s = trigger_t_s + duration_s
+    expected_if_aborted = restart_t_s + duration_s
+    expected_if_queued = end_t_s + duration_s
+
+    def relative(t_s):
+        return f"{t_s - trigger_t_s:6.1f} s"
+
+    print("\nNEUES SZENARIO DIREKT NACH DEM ABBRUCH (Zeiten ab erstem Start)")
+    print(f"  gestartet bei:                          {relative(restart_t_s)}")
+    print(f"  Antwort erwartet, falls abgebrochen:    {relative(expected_if_aborted)}")
+    print(f"  Antwort erwartet, falls es warten muss: {relative(expected_if_queued)}")
+
+    if not restart_rx:
+        print(
+            "  Keine Antwort auf das neue SCEN:TRIG erhalten.\n"
+            "  -> Ergebnis unklar. Protokoll (events.csv) pruefen."
+        )
+        return
+
+    # Die letzte Antwort gehoert zum neuen Szenario. Davor koennen z. B.
+    # die Antwort auf BEFEHL oder das Ende des ersten Szenarios liegen.
+    answer_t_s = restart_rx[-1]
+    print(f"  Antwort erhalten bei:                   {relative(answer_t_s)}")
+
+    if answer_t_s - restart_t_s < 1.0:
+        print(
+            "  -> Antwort kam sofort. Entweder wurde SCEN:TRIG abgelehnt oder\n"
+            "     das Geraet antwortet nicht erst am Szenarioende. Referenzlauf\n"
+            "     mit --methode warten und die Rohantwort im Protokoll pruefen."
+        )
+        return
+
+    distance_aborted = abs(answer_t_s - expected_if_aborted)
+    distance_queued = abs(answer_t_s - expected_if_queued)
+
+    if min(distance_aborted, distance_queued) > TIMING_TOLERANCE_S:
+        print("  -> Passt zu keiner Erwartung. Protokoll (events.csv) pruefen.")
+    elif distance_aborted < distance_queued:
+        print(
+            "  -> Das neue Szenario lief sofort.\n"
+            "     Der Abbruch hat funktioniert."
+        )
+    else:
+        print(
+            "  -> Das neue Szenario musste warten, bis das erste fertig war.\n"
+            "     Der Abbruch hat NICHT funktioniert."
+        )
 
 
 def main():
@@ -557,6 +661,11 @@ def main():
     parser.add_argument("--fahrzeug", type=int, default=VEHICLE_ID)
     parser.add_argument("--ip", default=RADEST_IP)
     parser.add_argument("--port", type=int, default=RADEST_PORT)
+    parser.add_argument(
+        "--kein-neustart",
+        action="store_true",
+        help="nach dem Abbruchversuch kein neues Szenario starten"
+    )
     args = parser.parse_args()
 
     RADEST_IP = args.ip
@@ -568,7 +677,12 @@ def main():
             "Danach muss der Precheck in der Weboberflaeche wiederholt werden."
         )
 
-    run(args.methode, args.befehl, args.fahrzeug)
+    run(
+        args.methode,
+        args.befehl,
+        args.fahrzeug,
+        restart=not args.kein_neustart
+    )
 
 
 if __name__ == "__main__":
