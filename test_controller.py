@@ -1,4 +1,5 @@
 import copy
+import re
 import threading
 import time
 
@@ -67,6 +68,7 @@ class TestController:
 
         self.static_rcs_limits = None
         self.static_rcs_dbsm = None
+        self.static_rcs_setting = None
         self._static_rcs_prepared_distance = None
 
 
@@ -90,6 +92,7 @@ class TestController:
         self.dynamic_rcs_limits = None
         self.dynamic_rcs_dbsm = None
         self.dynamic_rcs_constant_state = None
+        self.dynamic_rcs_setting = None
         self._dynamic_rcs_prepared_configuration = None
 
         self._scenario_thread = None
@@ -669,6 +672,35 @@ class TestController:
 
 
     @staticmethod
+    def _parse_rcs_setting(answer):
+
+        # Der RadEsT quittiert TARGET:SET:RCS bzw. SCENARIO:RCS mit
+        # seinem internen Arbeitspunkt, z. B.
+        # "setRCS = 41.80, ..., txValue = 10.50, attSet = 2.75, ...".
+        # Das Format ist nicht dokumentiert. Deshalb wird die Rohantwort
+        # immer gespeichert und nur zusätzlich in Zahlen zerlegt.
+
+        raw_answer = (
+            None
+            if answer is None
+            else str(answer).strip()
+        )
+
+        values = {
+            name: float(value)
+            for name, value in re.findall(
+                r"([A-Za-z_]\w*)\s*=\s*([-+]?\d+(?:\.\d+)?)",
+                raw_answer or ""
+            )
+        }
+
+        return {
+            "raw_answer": raw_answer,
+            "values": values
+        }
+
+
+    @staticmethod
     def _validate_rcs_value(rcs_dbsm, limits):
 
         rcs_dbsm = float(rcs_dbsm)
@@ -848,8 +880,10 @@ class TestController:
             self.static_rcs_limits
         )
 
-        self.radest.target_set_rcs(
-            self.static_rcs_dbsm
+        self.static_rcs_setting = self._parse_rcs_setting(
+            self.radest.target_set_rcs(
+                self.static_rcs_dbsm
+            )
         )
 
 
@@ -875,7 +909,10 @@ class TestController:
                 self.static_rcs_dbsm,
 
             "rcs_limits":
-                self.static_rcs_limits
+                self.static_rcs_limits,
+
+            "rcs_radest_setting":
+                self.static_rcs_setting
         }
 
 
@@ -1191,8 +1228,10 @@ class TestController:
             self.dynamic_rcs_limits
         )
 
-        self.radest.scenario_set_rcs(
-            self.dynamic_rcs_dbsm
+        self.dynamic_rcs_setting = self._parse_rcs_setting(
+            self.radest.scenario_set_rcs(
+                self.dynamic_rcs_dbsm
+            )
         )
 
         self.static_test_active = False
@@ -1217,7 +1256,8 @@ class TestController:
             "pre_hold_distance": self.dynamic_pre_hold_distance,
             "rcs_constant_state": self.dynamic_rcs_constant_state,
             "rcs_dbsm": self.dynamic_rcs_dbsm,
-            "rcs_limits": self.dynamic_rcs_limits
+            "rcs_limits": self.dynamic_rcs_limits,
+            "rcs_radest_setting": self.dynamic_rcs_setting
         }
 
 
@@ -2348,7 +2388,8 @@ class TestController:
 
                 rcs={
                     "value_dbsm": self.static_rcs_dbsm,
-                    "limits": self.static_rcs_limits
+                    "limits": self.static_rcs_limits,
+                    "radest_setting": self.static_rcs_setting
                 },
 
                 log_file=
@@ -2400,7 +2441,10 @@ class TestController:
                         self.dynamic_rcs_constant_state,
 
                     "rcs_limits":
-                        self.dynamic_rcs_limits
+                        self.dynamic_rcs_limits,
+
+                    "rcs_radest_setting":
+                        self.dynamic_rcs_setting
                 },
 
                 log_file=
