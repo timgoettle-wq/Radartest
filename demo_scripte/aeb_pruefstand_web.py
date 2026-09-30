@@ -1,8 +1,10 @@
 """Kompakte Live-Weboberflaeche fuer den AEB-Rollenpruefstandstest.
 
 Die Anwendung verwendet die Messkomponenten aus ``aeb_pruefstand_test.py``.
-Sie liest die Radar-Konfiguration des gewaehlten Fahrzeugs aus der Datenbank,
-schreibt aber selbst nichts in die Datenbank.
+RadEsT-Verbindung, Precheck und RCS laufen ueber den TestController wie im
+gefuehrten Pruefablauf. Ablauf: Verbinden, Precheck, RCS-Grenzen ermitteln,
+RCS eingeben, Test starten. Die Verbindung bleibt fuer weitere Tests bestehen.
+Die Anwendung schreibt nichts in die Datenbank.
 
 Start aus dem Projektordner:
     python demo_scripte/aeb_pruefstand_web.py
@@ -17,7 +19,6 @@ Pruefstandsfreigabe noch einen hardwareseitigen Not-Aus.
 import asyncio
 import csv
 import json
-import math
 import socket
 import sys
 import threading
@@ -25,6 +26,7 @@ import time
 from collections import deque
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -43,12 +45,15 @@ from demo_scripte.aeb_pruefstand_test import (
     SAMPLE_INTERVAL_S,
     DatabaseRadarMonitor,
     PassiveCanMonitor,
-    RadestDevice,
     StandaloneUdsMonitor,
-    configure_radest_scenario,
     create_diagram,
+    dynamic_movement_duration,
     expected_dynamic_distance,
     measurement_fieldnames,
+    prepare_radest,
+    radest_row_values,
+    rcs_limits_text,
+    start_radest,
     write_sample,
 )
 from demo_scripte.fahrzeugprofile import (
@@ -58,15 +63,19 @@ from demo_scripte.fahrzeugprofile import (
     uds_active,
     uds_signals,
 )
+from test_controller import TestController
 
 
 HOST = "0.0.0.0"
 PORT = 8001
 
 
-class TestConfig(BaseModel):
+class ConnectConfig(BaseModel):
     vehicle_id: int
     can_channel: str = CAN_CHANNEL
+
+
+class TestConfig(BaseModel):
     scenario_type: str = "dynamic"
     distance_m: float = 20.0
     duration_s: float = 15.0
@@ -75,8 +84,8 @@ class TestConfig(BaseModel):
     velocity_kmh: float = 10.0
     pre_hold_s: float = 2.0
     post_hold_s: float = 3.0
-    set_attenuation: bool = False
-    attenuation_db: float = 0.0
+    rcs_constant_state: int = 0
+    rcs_dbsm: Optional[float] = None
 
 
 def vehicle_name(vehicle):
@@ -91,10 +100,6 @@ def vehicle_name(vehicle):
 
 
 def validate_config(config):
-    if config.vehicle_id <= 0:
-        raise ValueError("Bitte ein Fahrzeug auswaehlen.")
-    if not config.can_channel.strip():
-        raise ValueError("Der CAN-Kanal darf nicht leer sein.")
     if config.scenario_type not in {"constant", "dynamic"}:
         raise ValueError("Unbekannte Testart.")
     if config.scenario_type == "constant":
@@ -109,10 +114,8 @@ def validate_config(config):
             raise ValueError("Die Relativgeschwindigkeit muss groesser als 0 sein.")
         if config.pre_hold_s < 0 or config.post_hold_s < 0:
             raise ValueError("Haltezeiten duerfen nicht negativ sein.")
-    if config.set_attenuation:
-        steps = config.attenuation_db * 4
-        if not 0 <= config.attenuation_db <= 31.75 or not math.isclose(steps, round(steps), abs_tol=1e-8):
-            raise ValueError("Die Daempfung muss zwischen 0 und 31,75 dB in 0,25-dB-Schritten liegen.")
+        if config.rcs_constant_state not in (0, 1):
+            raise ValueError("RCS-Verhalten muss 0 (konstant) oder 1 (variabel) sein.")
 
 
 def make_scenario(config):
@@ -129,7 +132,16 @@ def make_scenario(config):
         "velocity_kmh": config.velocity_kmh,
         "pre_hold_s": config.pre_hold_s,
         "post_hold_s": config.post_hold_s,
+        "rcs_constant_state": config.rcs_constant_state,
     }
+
+
+def scenario_key(scenario):
+    # Die Messdauer beeinflusst die RadEsT-Vorbereitung nicht.
+    return json.dumps(
+        {key: value for key, value in scenario.items() if key not in {"duration_s", "actual"}},
+        sort_keys=True,
+    )
 
 
 class AebWebRunner:
@@ -137,10 +149,11 @@ class AebWebRunner:
         self.lock = threading.RLock()
         self.stop_event = threading.Event()
         self.thread = None
+        self.busy = None
         self.sequence = 0
         self.history = deque(maxlen=3600)
-        self.status = "bereit"
-        self.message = "Konfiguration ausfuellen und Verbindungen pruefen."
+        self.status = "getrennt"
+        self.message = "Fahrzeug waehlen und verbinden."
         self.output_directory = None
         self.started_at = None
         self.finished_at = None
@@ -148,22 +161,49 @@ class AebWebRunner:
         self.latest = None
         self.profile = None
 
+        # Sitzung: bleibt ueber mehrere Tests bestehen.
+        self.controller = None
+        self.vehicle_id = None
+        self.can_channel = None
+        self.radar_signals = []
+        self.precheck = None
+        self.rcs_limits = None
+        self.prepared_key = None
+        self.prepared_scenario = None
+        self.last_radest = None
+
     def snapshot(self, include_history=False):
         with self.lock:
             result = {
                 "status": self.status,
                 "message": self.message,
                 "sequence": self.sequence,
-                "running": self.thread is not None and self.thread.is_alive(),
+                "running": self._running(),
+                "busy": self.busy,
                 "started_at": self.started_at,
                 "finished_at": self.finished_at,
                 "output_directory": str(self.output_directory) if self.output_directory else None,
                 "brake_onset_s": self.brake_onset_s,
                 "latest": self.latest,
+                "session": {
+                    "connected": self.controller is not None,
+                    "vehicle_id": self.vehicle_id,
+                    "can_channel": self.can_channel,
+                    "profile": profile_summary(self.profile) if self.profile else None,
+                    "radar_signals": self.radar_signals,
+                    "precheck": self.precheck,
+                    "rcs_limits": self.rcs_limits,
+                    "prepared": self.prepared_key is not None,
+                    "prepared_actual": (self.prepared_scenario or {}).get("actual"),
+                    "last_radest": self.last_radest,
+                },
             }
             if include_history:
                 result["history"] = list(self.history)
             return result
+
+    def _running(self):
+        return self.thread is not None and self.thread.is_alive()
 
     def _set_state(self, status, message):
         with self.lock:
@@ -171,80 +211,190 @@ class AebWebRunner:
             self.message = message
             self.sequence += 1
 
-    def check_connections(self, config):
-        validate_config(config)
-        if self.thread is not None and self.thread.is_alive():
-            raise RuntimeError("Waehrend eines laufenden Tests ist keine separate Verbindungspruefung moeglich.")
-
-        result = {"radest": False, "can": False, "vehicle": False, "details": {}}
+    def _exclusive(self, label, action, needs_connection=True):
+        with self.lock:
+            if self._running():
+                raise RuntimeError("Waehrend eines laufenden Tests nicht moeglich.")
+            if self.busy is not None:
+                raise RuntimeError(f"Bitte warten: {self.busy} laeuft noch.")
+            if needs_connection and self.controller is None:
+                raise RuntimeError("Bitte zuerst verbinden.")
+            self.busy = label
+            self.sequence += 1
         try:
-            if socket.if_nametoindex(config.can_channel.strip()) == 0:
-                raise OSError(f"CAN-Interface {config.can_channel} nicht gefunden")
-            result["can"] = True
-            result["details"]["can"] = f"{config.can_channel} vorhanden"
-        except OSError as error:
-            result["details"]["can"] = str(error)
-
-        try:
-            profile = profile_for_vehicle(config.vehicle_id)
-            radar = DatabaseRadarMonitor(config.vehicle_id)
-            result["vehicle"] = True
-            result["details"]["vehicle"] = (
-                f"Radar-Signale: {', '.join(radar.signal_names)} | {profile_summary(profile)}"
-            )
-        except Exception as error:
-            result["details"]["vehicle"] = str(error)
-
-        radest = RadestDevice(RADEST_IP, RADEST_PORT)
-        try:
-            if not radest.connect():
-                raise ConnectionError("Verbindung fehlgeschlagen")
-            result["radest"] = True
-            result["details"]["radest"] = f"{RADEST_IP}:{RADEST_PORT} erreichbar"
-        except Exception as error:
-            result["details"]["radest"] = str(error)
+            return action()
         finally:
-            if result["radest"]:
-                radest.disconnect()
+            with self.lock:
+                self.busy = None
+                self.sequence += 1
 
-        result["ok"] = result["radest"] and result["can"] and result["vehicle"]
-        self._set_state(
-            "bereit" if result["ok"] else "fehler",
-            "Alle Verbindungen sind bereit." if result["ok"] else "Mindestens eine Verbindung ist nicht bereit.",
-        )
-        return result
+    def connect(self, config):
+        if config.vehicle_id <= 0:
+            raise ValueError("Bitte ein Fahrzeug auswaehlen.")
+        can_channel = config.can_channel.strip()
+        if not can_channel:
+            raise ValueError("Der CAN-Kanal darf nicht leer sein.")
+
+        def action():
+            profile = profile_for_vehicle(config.vehicle_id)
+            if socket.if_nametoindex(can_channel) == 0:
+                raise OSError(f"CAN-Interface {can_channel} nicht gefunden")
+
+            self._disconnect_controller()
+            self._set_state("verbindet", "RadEsT und Fahrzeug werden verbunden.")
+            controller = TestController(config.vehicle_id, radest_ip=RADEST_IP, radest_port=RADEST_PORT)
+            try:
+                controller.connect()
+                radar_signals = DatabaseRadarMonitor(controller.vehicle).signal_names
+            except Exception:
+                controller.disconnect()
+                raise
+
+            with self.lock:
+                self.controller = controller
+                self.vehicle_id = config.vehicle_id
+                self.can_channel = can_channel
+                self.profile = profile
+                self.radar_signals = radar_signals
+            self._set_state("verbunden", "Verbunden. Precheck durchfuehren oder ueberspringen.")
+            return self.snapshot()
+
+        try:
+            return self._exclusive("Verbinden", action, needs_connection=False)
+        except Exception as error:
+            self._set_state("fehler", str(error))
+            raise
+
+    def _disconnect_controller(self):
+        with self.lock:
+            controller = self.controller
+            self.controller = None
+            self.vehicle_id = None
+            self.can_channel = None
+            self.radar_signals = []
+            self.precheck = None
+            self.rcs_limits = None
+            self.prepared_key = None
+            self.prepared_scenario = None
+            self.last_radest = None
+        if controller is not None:
+            controller.disconnect()
+
+    def disconnect(self):
+        def action():
+            self._disconnect_controller()
+            self._set_state("getrennt", "Verbindung getrennt.")
+            return self.snapshot()
+
+        return self._exclusive("Trennen", action, needs_connection=False)
+
+    def run_precheck(self, skip=False):
+        def action():
+            with self.lock:
+                self.rcs_limits = None
+                self.prepared_key = None
+                self.prepared_scenario = None
+            if skip:
+                result = self.controller.skip_precheck()
+                message = "Precheck uebersprungen. RCS-Grenzen ermitteln."
+            else:
+                self._set_state("precheck", "Precheck laeuft.")
+                result = self.controller.run_precheck()
+                message = "Precheck abgeschlossen. RCS-Grenzen ermitteln."
+            with self.lock:
+                self.precheck = result
+            self._set_state("bereit", message)
+            return self.snapshot()
+
+        try:
+            return self._exclusive("Precheck", action)
+        except Exception as error:
+            self._set_state("fehler", str(error))
+            raise
+
+    def prepare_rcs(self, config):
+        validate_config(config)
+        scenario = make_scenario(config)
+
+        def action():
+            with self.lock:
+                self.prepared_key = None
+                self.prepared_scenario = None
+            limits = prepare_radest(self.controller, scenario)
+            with self.lock:
+                self.rcs_limits = limits
+                self.prepared_key = scenario_key(scenario)
+                self.prepared_scenario = scenario
+            self._set_state("bereit", f"RCS-Bereich {rcs_limits_text(limits)}. RCS eingeben und Test starten.")
+            return self.snapshot()
+
+        try:
+            return self._exclusive("RCS-Grenzen", action)
+        except Exception as error:
+            self._set_state("fehler", str(error))
+            raise
 
     def start(self, config):
         validate_config(config)
-        profile = profile_for_vehicle(config.vehicle_id)
+        scenario = make_scenario(config)
+        if config.rcs_dbsm is None:
+            raise ValueError("Bitte einen RCS-Wert eingeben.")
+
+        def action():
+            with self.lock:
+                if self.prepared_key is None:
+                    raise RuntimeError("Bitte zuerst die RCS-Grenzen ermitteln.")
+                if scenario_key(scenario) != self.prepared_key:
+                    raise RuntimeError(
+                        "Die Testkonfiguration wurde nach dem Ermitteln der RCS-Grenzen geaendert. "
+                        "Bitte RCS-Grenzen neu ermitteln."
+                    )
+                scenario["actual"] = self.prepared_scenario["actual"]
+            return start_radest(self.controller, scenario, config.rcs_dbsm)
+
+        radest_result = self._exclusive("RCS setzen", action)
+
         with self.lock:
-            if self.thread is not None and self.thread.is_alive():
+            if self._running() or self.busy is not None:
                 raise RuntimeError("Es laeuft bereits ein Pruefstandstest.")
+            # Nach jedem Test muessen die RCS-Grenzen neu ermittelt werden,
+            # weil das Ziel dann am Szenarioende steht.
+            self.prepared_key = None
+            self.prepared_scenario = None
+            self.last_radest = radest_row_values(radest_result)
             self.stop_event.clear()
             self.sequence += 1
             self.history.clear()
             self.latest = None
             self.brake_onset_s = None
-            self.profile = profile
             self.finished_at = None
             self.started_at = datetime.now().isoformat(timespec="seconds")
             self.status = "startet"
-            self.message = "RadEsT und Diagnose werden verbunden."
+            self.message = "RCS gesetzt. Aufzeichnung wird gestartet."
             self.thread = threading.Thread(
-                target=self._run, args=(config, profile), name="AebWebTest", daemon=True
+                target=self._run,
+                args=(config, self.profile, scenario, radest_result),
+                name="AebWebTest",
+                daemon=True,
             )
             self.thread.start()
         return self.snapshot()
 
     def stop(self):
         with self.lock:
-            if self.thread is None or not self.thread.is_alive():
+            if not self._running():
                 return self.snapshot()
             self.stop_event.set()
             self.status = "stoppt"
             self.message = "Aufzeichnung wird beendet. Ein laufendes RadEsT-Szenario muss noch auslaufen."
             self.sequence += 1
         return self.snapshot()
+
+    def shutdown(self):
+        self.stop()
+        if self.thread is not None:
+            self.thread.join(timeout=5.0)
+        self._disconnect_controller()
 
     def _publish_row(self, row):
         web_row = dict(row)
@@ -281,6 +431,7 @@ class AebWebRunner:
         phase,
         distance_function,
         velocity_kmh,
+        radest_values,
     ):
         started = time.perf_counter()
         next_sample = started
@@ -301,13 +452,14 @@ class AebWebRunner:
                 target_distance,
                 velocity_kmh,
                 self.profile,
+                radest_values,
             )
             file.flush()
             self._publish_row(rows[-1])
             next_sample += SAMPLE_INTERVAL_S
             self.stop_event.wait(max(0.0, next_sample - time.perf_counter()))
 
-    def _run(self, config, profile):
+    def _run(self, config, profile, scenario, radest_result):
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         output_directory = PROJECT_ROOT / "test_runs" / f"aeb_bench_{timestamp}"
         output_directory.mkdir(parents=True, exist_ok=True)
@@ -319,51 +471,41 @@ class AebWebRunner:
 
         with self.lock:
             self.output_directory = output_directory
+            controller = self.controller
+            can_channel = self.can_channel
+            config_data = {
+                "vehicle_id": self.vehicle_id,
+                "can_channel": can_channel,
+                **(config.model_dump() if hasattr(config, "model_dump") else config.dict()),
+                "scenario": scenario,
+                "precheck": self.precheck,
+                "radest": radest_result,
+                "vehicle_profile": profile,
+            }
 
-        config_data = config.model_dump() if hasattr(config, "model_dump") else config.dict()
-        config_data["vehicle_profile"] = profile
         config_file.write_text(
-            json.dumps(config_data, indent=2, ensure_ascii=False),
+            json.dumps(config_data, indent=2, ensure_ascii=False, default=str),
             encoding="utf-8",
         )
 
-        scenario = make_scenario(config)
-        radest = RadestDevice(RADEST_IP, RADEST_PORT)
+        radest_values = radest_row_values(radest_result)
+        actual = scenario["actual"]
         monitor = None
         diagnostic_monitor = None
         radar_monitor = None
-        connected = False
-        original_distance = None
-        original_attenuation = None
         scenario_thread = None
         scenario_error = []
         rows = []
         origin = time.perf_counter()
 
         try:
-            connected = radest.connect()
-            if not connected:
-                raise ConnectionError("Verbindung zum RadEsT fehlgeschlagen.")
-
-            try:
-                original_distance = radest.target_get_distance()
-            except Exception:
-                original_distance = None
-
-            if config.set_attenuation:
-                original_attenuation = radest.system_get_attenuation()
-                radest.system_set_attenuation(config.attenuation_db)
-
-            configure_radest_scenario(radest, scenario)
-            radar_monitor = DatabaseRadarMonitor(config.vehicle_id)
+            radar_monitor = DatabaseRadarMonitor(controller.vehicle)
             radar_monitor.start()
-            monitor = PassiveCanMonitor(
-                config.can_channel.strip(), raw_can_csv, origin, can_signals(profile)
-            )
+            monitor = PassiveCanMonitor(can_channel, raw_can_csv, origin, can_signals(profile))
             monitor.start()
             if uds_active(profile):
                 diagnostic_monitor = StandaloneUdsMonitor(
-                    config.can_channel.strip(),
+                    can_channel,
                     diagnostic_raw_csv,
                     origin,
                     profile["uds"],
@@ -392,19 +534,20 @@ class AebWebRunner:
                     self._sample_phase(
                         writer, file, rows, monitor, diagnostic_monitor, radar_monitor, origin,
                         scenario["duration_s"], "constant",
-                        lambda _elapsed: scenario["distance_m"], 0.0,
+                        lambda _elapsed: actual["distance_m"], 0.0, radest_values,
                     )
                 else:
                     self._sample_phase(
                         writer, file, rows, monitor, diagnostic_monitor, radar_monitor, origin,
                         scenario["pre_hold_s"], "pre_hold",
-                        lambda _elapsed: scenario["start_distance_m"], scenario["velocity_kmh"],
+                        lambda _elapsed: actual["pre_hold_distance_m"], actual["velocity_kmh"],
+                        radest_values,
                     )
 
                     if not self.stop_event.is_set():
                         def trigger_scenario():
                             try:
-                                radest.scenario_trigger()
+                                controller.radest.scenario_trigger()
                             except Exception as error:
                                 scenario_error.append(error)
 
@@ -412,22 +555,19 @@ class AebWebRunner:
                             target=trigger_scenario, name="RadestScenario", daemon=True
                         )
                         scenario_thread.start()
-                        movement_duration = (
-                            abs(scenario["end_distance_m"] - scenario["start_distance_m"])
-                            / (scenario["velocity_kmh"] / 3.6)
-                        )
                         self._sample_phase(
                             writer, file, rows, monitor, diagnostic_monitor, radar_monitor, origin,
-                            movement_duration, "moving",
-                            lambda elapsed: expected_dynamic_distance(scenario, elapsed),
-                            scenario["velocity_kmh"],
+                            dynamic_movement_duration(actual), "moving",
+                            lambda elapsed: expected_dynamic_distance(actual, elapsed),
+                            actual["velocity_kmh"], radest_values,
                         )
 
                     if not self.stop_event.is_set():
                         self._sample_phase(
                             writer, file, rows, monitor, diagnostic_monitor, radar_monitor, origin,
                             scenario["post_hold_s"], "post_hold",
-                            lambda _elapsed: scenario["end_distance_m"], scenario["velocity_kmh"],
+                            lambda _elapsed: actual["end_distance_m"], actual["velocity_kmh"],
+                            radest_values,
                         )
 
             if scenario_thread is not None and scenario_thread.is_alive():
@@ -446,9 +586,17 @@ class AebWebRunner:
 
             create_diagram(rows, diagram_file)
             if self.stop_event.is_set():
-                self._set_state("abgebrochen", "Test gestoppt. Vorhandene Messdaten wurden gespeichert.")
+                self._set_state(
+                    "abgebrochen",
+                    "Test gestoppt. Vorhandene Messdaten wurden gespeichert. "
+                    "Fuer den naechsten Test RCS-Grenzen neu ermitteln.",
+                )
             else:
-                self._set_state("abgeschlossen", "Test abgeschlossen und Dateien gespeichert.")
+                self._set_state(
+                    "abgeschlossen",
+                    "Test abgeschlossen und Dateien gespeichert. "
+                    "Fuer den naechsten Test RCS-Grenzen neu ermitteln.",
+                )
 
         except Exception as error:
             self._set_state("fehler", str(error))
@@ -460,19 +608,6 @@ class AebWebRunner:
             if radar_monitor is not None:
                 radar_monitor.stop()
 
-            if connected and original_attenuation is not None:
-                try:
-                    radest.system_set_attenuation(original_attenuation)
-                except Exception:
-                    pass
-            if connected and original_distance is not None:
-                try:
-                    radest.target_set_distance(original_distance)
-                except Exception:
-                    pass
-            if connected:
-                radest.disconnect()
-
             with self.lock:
                 self.finished_at = datetime.now().isoformat(timespec="seconds")
                 self.sequence += 1
@@ -480,6 +615,18 @@ class AebWebRunner:
 
 runner = AebWebRunner()
 app = FastAPI(title="AEB-Pruefstand Live")
+
+
+@app.on_event("shutdown")
+def shutdown():
+    runner.shutdown()
+
+
+def _call(action, *args):
+    try:
+        return action(*args)
+    except Exception as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -508,20 +655,34 @@ def get_status():
     return runner.snapshot(include_history=True)
 
 
-@app.post("/api/check")
-def check_connections(config: TestConfig):
-    try:
-        return runner.check_connections(config)
-    except Exception as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
+@app.post("/api/connect")
+def connect(config: ConnectConfig):
+    return _call(runner.connect, config)
+
+
+@app.post("/api/disconnect")
+def disconnect():
+    return _call(runner.disconnect)
+
+
+@app.post("/api/precheck")
+def run_precheck():
+    return _call(runner.run_precheck, False)
+
+
+@app.post("/api/precheck/skip")
+def skip_precheck():
+    return _call(runner.run_precheck, True)
+
+
+@app.post("/api/rcs-limits")
+def rcs_limits(config: TestConfig):
+    return _call(runner.prepare_rcs, config)
 
 
 @app.post("/api/start")
 def start_test(config: TestConfig):
-    try:
-        return runner.start(config)
-    except Exception as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
+    return _call(runner.start, config)
 
 
 @app.post("/api/stop")
@@ -572,23 +733,32 @@ PAGE = r'''<!doctype html>
 <body><main>
   <div class="head"><div><h1>AEB-Prüfstand Live</h1><div class="sub">RadEsT-Szenario, Fahrzeugdiagnose und CAN-Aufzeichnung</div></div><div class="safety">Software-Stopp ersetzt keinen hardwareseitigen Not-Aus.</div></div>
   <section class="panel">
-    <div class="panel-title">Testkonfiguration</div>
+    <div class="panel-title">1 · Verbindung und Precheck</div>
     <div class="form">
       <div class="field span2"><label>Fahrzeug</label><select id="vehicle"></select></div>
       <div class="field"><label>CAN-Kanal</label><input id="channel" value="can0"></div>
-      <div class="field"><label>Testart</label><select id="type"><option value="dynamic">Dynamisch</option><option value="constant">Statisch</option></select></div>
-      <div class="field dynamic"><label>Startdistanz [m]</label><input id="startDistance" type="number" min="0.1" step="0.1" value="40"></div>
-      <div class="field dynamic"><label>Enddistanz [m]</label><input id="endDistance" type="number" min="0.1" step="0.1" value="5"></div>
-      <div class="field dynamic"><label>Relativgeschwindigkeit [km/h]</label><input id="velocity" type="number" min="0.1" step="0.1" value="10"></div>
-      <div class="field dynamic"><label>Haltezeit vorher [s]</label><input id="preHold" type="number" min="0" step="0.1" value="2"></div>
-      <div class="field dynamic"><label>Haltezeit nachher [s]</label><input id="postHold" type="number" min="0" step="0.1" value="3"></div>
-      <div class="field constant hidden"><label>Zielabstand [m]</label><input id="distance" type="number" min="0.1" step="0.1" value="20"></div>
-      <div class="field constant hidden"><label>Messdauer [s]</label><input id="duration" type="number" min="0.1" step="0.1" value="15"></div>
-      <div class="switch"><input id="setAtt" type="checkbox"><label for="setAtt" style="margin:0">Dämpfung setzen</label></div>
-      <div class="field" id="attField"><label>Dämpfung [dB]</label><input id="attenuation" type="number" min="0" max="31.75" step="0.25" value="0" disabled></div>
     </div>
-    <div class="actions"><button class="btn secondary" id="check">Verbindungen prüfen</button><button class="btn primary" id="start">Test starten</button><button class="btn danger" id="stop" disabled>Test stoppen</button></div>
-    <div class="checks" id="checks"><span class="check">RadEsT: nicht geprüft</span><span class="check">CAN: nicht geprüft</span><span class="check">Fahrzeug: nicht geprüft</span></div>
+    <div class="actions"><button class="btn primary" id="connect">Verbinden</button><button class="btn secondary" id="disconnect" disabled>Trennen</button><button class="btn secondary" id="precheck" disabled>Precheck durchführen</button><button class="btn secondary" id="skipPrecheck" disabled>Precheck überspringen</button></div>
+    <div class="checks" id="checks"><span class="check">Verbindung: getrennt</span><span class="check">Precheck: offen</span></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-title">2 · Testkonfiguration und RCS</div>
+    <div class="form">
+      <div class="field"><label>Testart</label><select id="type" class="scenario"><option value="dynamic">Dynamisch</option><option value="constant">Statisch</option></select></div>
+      <div class="field dynamic"><label>Startdistanz [m]</label><input class="scenario" id="startDistance" type="number" min="0.1" step="0.1" value="40"></div>
+      <div class="field dynamic"><label>Enddistanz [m]</label><input class="scenario" id="endDistance" type="number" min="0.1" step="0.1" value="5"></div>
+      <div class="field dynamic"><label>Relativgeschwindigkeit [km/h]</label><input class="scenario" id="velocity" type="number" min="0.1" step="0.1" value="10"></div>
+      <div class="field dynamic"><label>Haltezeit vorher [s]</label><input class="scenario" id="preHold" type="number" min="0" step="0.1" value="2"></div>
+      <div class="field dynamic"><label>Haltezeit nachher [s]</label><input class="scenario" id="postHold" type="number" min="0" step="0.1" value="3"></div>
+      <div class="field dynamic span2"><label>RCS-Verhalten im Szenario</label><select class="scenario" id="rcsMode"><option value="0" selected>Konstante RCS</option><option value="1">Variable RCS / konstante Ausgangsleistung</option></select></div>
+      <div class="field constant hidden"><label>Zielabstand [m]</label><input class="scenario" id="distance" type="number" min="0.1" step="0.1" value="20"></div>
+      <div class="field constant hidden"><label>Messdauer [s]</label><input id="duration" type="number" min="0.1" step="0.1" value="15"></div>
+      <div class="field"><label>RCS-Bereich</label><div id="rcsRange" style="font-weight:600;padding-top:2px">–</div></div>
+      <div class="field"><label>RCS [dBsm]</label><input id="rcs" type="number" step="0.1" disabled></div>
+    </div>
+    <div class="actions"><button class="btn secondary" id="rcsLimits" disabled>RCS-Grenzen ermitteln</button><button class="btn primary" id="start" disabled>Test starten</button><button class="btn danger" id="stop" disabled>Test stoppen</button></div>
+    <div class="checks" id="radestInfo"><span class="check">RadEsT-Arbeitspunkt: noch kein Test</span></div>
   </section>
 
   <section class="panel">
@@ -614,16 +784,32 @@ PAGE = r'''<!doctype html>
 <script>
 const $=id=>document.getElementById(id); let rows=[]; let startedAt=null; let socket=null;
 const num=id=>Number($(id).value.replace?.(',','.') ?? $(id).value);
-function payload(){return {vehicle_id:Number($('vehicle').value),can_channel:$('channel').value.trim(),scenario_type:$('type').value,distance_m:num('distance'),duration_s:num('duration'),start_distance_m:num('startDistance'),end_distance_m:num('endDistance'),velocity_kmh:num('velocity'),pre_hold_s:num('preHold'),post_hold_s:num('postHold'),set_attenuation:$('setAtt').checked,attenuation_db:num('attenuation')}}
+function payload(){return {scenario_type:$('type').value,distance_m:num('distance'),duration_s:num('duration'),start_distance_m:num('startDistance'),end_distance_m:num('endDistance'),velocity_kmh:num('velocity'),pre_hold_s:num('preHold'),post_hold_s:num('postHold'),rcs_constant_state:Number($('rcsMode').value),rcs_dbsm:$('rcs').value===''?null:num('rcs')}}
 function scenarioFields(){const constant=$('type').value==='constant';document.querySelectorAll('.dynamic').forEach(e=>e.classList.toggle('hidden',constant));document.querySelectorAll('.constant').forEach(e=>e.classList.toggle('hidden',!constant))}
 function fmt(value,unit,digits=2){return value===null||value===undefined||!Number.isFinite(Number(value))?'–':`${Number(value).toFixed(digits)} ${unit}`}
 function setLive(r){if(!r)return;$('target').textContent=fmt(r.radest_target_distance_m,'m');$('radar').textContent=fmt(r.radar_distance,'m');$('relative').textContent=fmt(r.radar_relative_speed,'km/h');$('speed').textContent=fmt(r.vehicle_speed,'km/h');$('brake').textContent=r.brake_pressure==null&&r.brake_pedal_pressed!=null?(Number(r.brake_pedal_pressed)>=1?'betätigt':'frei'):fmt(r.brake_pressure,'bar');$('accel').textContent=fmt(r.longitudinal_acceleration,'m/s²');$('steering').textContent=fmt(r.steering_angle,'°');$('yaw').textContent=fmt(r.yaw_rate,'°/s')}
-function setState(s){$('status').textContent=s.status;$('message').textContent=s.message||'';$('output').textContent=s.output_directory?`Ausgabe: ${s.output_directory}`:'Noch kein Ausgabeordner angelegt.';const running=!!s.running;$('start').disabled=running;$('check').disabled=running;$('stop').disabled=!running;document.querySelectorAll('.form input,.form select').forEach(e=>e.disabled=running||e.id==='attenuation'&&!$('setAtt').checked);if(s.started_at&&!startedAt)startedAt=new Date(s.started_at);if(!s.running&&['abgeschlossen','abgebrochen','fehler'].includes(s.status))startedAt=null;if(s.history){rows=s.history.slice()}if(s.latest){if(!rows.length||rows.at(-1).elapsed_s!==s.latest.elapsed_s)rows.push(s.latest);if(rows.length>3600)rows.shift();setLive(s.latest)}$('brakeCard').classList.toggle('active',s.brake_onset_s!==null&&s.brake_onset_s!==undefined);drawAll()}
-async function post(url){const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:url.endsWith('/stop')?null:JSON.stringify(payload())});const data=await res.json();if(!res.ok)throw new Error(data.detail||'Fehler');return data}
-$('type').onchange=scenarioFields;$('setAtt').onchange=()=>{$('attenuation').disabled=!$('setAtt').checked};
-$('check').onclick=async()=>{try{const r=await post('/api/check');$('checks').innerHTML=['radest','can','vehicle'].map(k=>`<span class="check ${r[k]?'ok':'bad'}">${k==='radest'?'RadEsT':k==='can'?'CAN':'Fahrzeug'}: ${escapeHtml(r.details[k])}</span>`).join('')}catch(e){alert(e.message)}};
-$('start').onclick=async()=>{if(!confirm('Prüfstand freigegeben und hardwareseitiger Not-Aus erreichbar?'))return;try{rows=[];startedAt=null;setState(await post('/api/start'))}catch(e){alert(e.message)}};
-$('stop').onclick=async()=>{try{setState(await post('/api/stop'))}catch(e){alert(e.message)}};
+function chip(ok,text){return `<span class="check ${ok===true?'ok':ok===false?'bad':''}">${escapeHtml(text)}</span>`}
+function setSession(s){const x=s.session||{};const busy=!!s.busy,running=!!s.running,idle=!busy&&!running;
+  if(x.connected){$('vehicle').value=String(x.vehicle_id);$('channel').value=x.can_channel}
+  const pre=x.precheck;const preText=!pre?'Precheck: offen':pre.skipped?'Precheck: übersprungen':`Precheck: ${pre.polarization??''} · ${pre.frequency_range??''} · ${pre.power??''}`;
+  $('checks').innerHTML=chip(x.connected?true:null,x.connected?`Verbunden: Fahrzeug ${x.vehicle_id} auf ${x.can_channel} · Radar ${x.radar_signals.join(', ')}`:'Verbindung: getrennt')+(x.profile?chip(true,x.profile):'')+chip(pre?true:null,preText);
+  const limits=x.rcs_limits;$('rcsRange').textContent=limits?`${limits.rcs_min_dbsm.toFixed(2)} … ${limits.rcs_max_dbsm.toFixed(2)} dBsm`:'–';
+  if(limits){$('rcs').min=limits.rcs_min_dbsm;$('rcs').max=limits.rcs_max_dbsm;if($('rcs').value==='')$('rcs').value=Math.min(Math.max(10,limits.rcs_min_dbsm),limits.rcs_max_dbsm).toFixed(1)}
+  const r=x.last_radest;$('radestInfo').innerHTML=r?chip(true,`Letzter Test: RCS ${r.radest_rcs_dbsm} dBsm · txValue ${r.radest_tx_value??'–'} · attSet ${r.radest_att_set??'–'} · Temperatur ${r.radest_temperature_c??'–'} °C`):chip(null,'RadEsT-Arbeitspunkt: noch kein Test');
+  $('vehicle').disabled=$('channel').disabled=x.connected||!idle;$('connect').disabled=x.connected||!idle;$('disconnect').disabled=!x.connected||!idle;$('precheck').disabled=$('skipPrecheck').disabled=!x.connected||!idle;
+  $('rcsLimits').disabled=!x.connected||!pre||!idle;$('rcs').disabled=!x.prepared||!idle;$('start').disabled=!x.prepared||!idle;$('stop').disabled=!running;
+  document.querySelectorAll('.scenario,#duration').forEach(e=>e.disabled=!idle)}
+function setState(s){$('status').textContent=s.busy?`${s.busy} …`:s.status;$('message').textContent=s.message||'';$('output').textContent=s.output_directory?`Ausgabe: ${s.output_directory}`:'Noch kein Ausgabeordner angelegt.';setSession(s);if(s.started_at&&!startedAt)startedAt=new Date(s.started_at);if(!s.running&&['abgeschlossen','abgebrochen','fehler'].includes(s.status))startedAt=null;if(s.history){rows=s.history.slice()}if(s.latest){if(!rows.length||rows.at(-1).elapsed_s!==s.latest.elapsed_s)rows.push(s.latest);if(rows.length>3600)rows.shift();setLive(s.latest)}$('brakeCard').classList.toggle('active',s.brake_onset_s!==null&&s.brake_onset_s!==undefined);drawAll()}
+async function post(url,body){const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:body===undefined?null:JSON.stringify(body)});const data=await res.json();if(!res.ok)throw new Error(data.detail||'Fehler');return data}
+async function act(fn){try{setState(await fn())}catch(e){alert(e.message)}}
+$('type').onchange=scenarioFields;
+$('connect').onclick=()=>act(()=>post('/api/connect',{vehicle_id:Number($('vehicle').value),can_channel:$('channel').value.trim()}));
+$('disconnect').onclick=()=>act(()=>post('/api/disconnect'));
+$('precheck').onclick=()=>act(()=>post('/api/precheck'));
+$('skipPrecheck').onclick=()=>act(()=>post('/api/precheck/skip'));
+$('rcsLimits').onclick=()=>act(()=>post('/api/rcs-limits',payload()));
+$('start').onclick=()=>{if(!confirm('Prüfstand freigegeben und hardwareseitiger Not-Aus erreichbar?'))return;rows=[];startedAt=null;act(()=>post('/api/start',payload()))};
+$('stop').onclick=()=>act(()=>post('/api/stop'));
 function escapeHtml(v){const d=document.createElement('div');d.textContent=v??'';return d.innerHTML}
 function connectWs(){const protocol=location.protocol==='https:'?'wss':'ws';socket=new WebSocket(`${protocol}://${location.host}/ws`);socket.onmessage=e=>setState(JSON.parse(e.data));socket.onclose=()=>setTimeout(connectWs,1000)}
 function timer(){let seconds=rows.length?Number(rows.at(-1).elapsed_s):0;$('timer').textContent=`${String(Math.floor(seconds/60)).padStart(2,'0')}:${(seconds%60).toFixed(1).padStart(4,'0')}`;requestAnimationFrame(timer)}

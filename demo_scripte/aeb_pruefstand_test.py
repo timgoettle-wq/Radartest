@@ -6,6 +6,10 @@ ESP-/Bremswerte werden unabhaengig davon ueber das Fahrzeugprofil aus
 demo_scripte/fahrzeugprofile/ gelesen (UDS-DIDs und/oder passiv mitgelesene
 CAN-Frames). Der CAN-Bus wird zusaetzlich komplett passiv aufgezeichnet.
 
+RadEsT-Verbindung, Precheck und RCS laufen ueber den TestController wie im
+gefuehrten Pruefablauf. Die Radar-Livesignale werden ueber dessen
+Fahrzeugverbindung gelesen.
+
 Start aus dem Projektordner:
     python demo_scripte/aeb_pruefstand_test.py
 
@@ -41,8 +45,7 @@ from demo_scripte.fahrzeugprofile import (
     uds_dids,
     uds_signals,
 )
-from diagnostics.vehicle import VehicleDiagnostic
-from radest.device import RadestDevice
+from test_controller import TestController
 
 
 # ======================================================
@@ -69,6 +72,20 @@ DIAGNOSTIC_INTERVAL_S = 0.10
 DIAGNOSTIC_TIMEOUT_S = 0.50
 RADAR_INTERVAL_S = 0.05
 
+# Wie im gefuehrten Pruefablauf (TestController.prepare_dynamic_measurement).
+RCS_CONSTANT_STATES_TEXT = {
+    "0": "Konstante RCS",
+    "1": "Variable RCS / konstante Ausgangsleistung",
+}
+
+# RCS-Arbeitspunkt des RadEsT, in jeder Zeile der Mess-CSV wiederholt.
+RADEST_COLUMNS = (
+    "radest_rcs_dbsm",
+    "radest_tx_value",
+    "radest_att_set",
+    "radest_temperature_c",
+)
+
 CAN_FRAME = struct.Struct("=IB3x8s")
 CAN_EFF_MASK = 0x1FFFFFFF
 CAN_ERR_FLAG = 0x20000000
@@ -79,7 +96,7 @@ CAN_ISOTP_OPTS = getattr(socket, "CAN_ISOTP_OPTS", 1)
 CAN_ISOTP_TX_PADDING = getattr(socket, "CAN_ISOTP_TX_PADDING", 0x0004)
 
 
-def ask_float(prompt, default, minimum=None):
+def ask_float(prompt, default, minimum=None, maximum=None):
     while True:
         answer = input(f"{prompt} [{default:g}]: ").strip().replace(",", ".")
         try:
@@ -91,7 +108,20 @@ def ask_float(prompt, default, minimum=None):
         if not math.isfinite(value) or (minimum is not None and value < minimum):
             print(f"Der Wert muss mindestens {minimum:g} betragen.")
             continue
+        if maximum is not None and value > maximum:
+            print(f"Der Wert darf hoechstens {maximum:g} betragen.")
+            continue
         return value
+
+
+def ask_choice(prompt, options, default):
+    for key, text in options.items():
+        print(f"{key} - {text}")
+    while True:
+        choice = input(f"{prompt} [{default}]: ").strip() or default
+        if choice in options:
+            return choice
+        print(f"Bitte {' oder '.join(options)} eingeben.")
 
 
 def ask_vehicle_id():
@@ -141,6 +171,9 @@ def ask_scenario():
         "velocity_kmh": ask_float("RadEsT-Schliessgeschwindigkeit in km/h", 10.0, 0.1),
         "pre_hold_s": ask_float("Haltezeit vor Bewegung in s", 2.0, 0.0),
         "post_hold_s": ask_float("Haltezeit am Ende in s", 3.0, 0.0),
+        "rcs_constant_state": int(
+            ask_choice("RCS-Verhalten im Szenario", RCS_CONSTANT_STATES_TEXT, "0")
+        ),
     }
 
 
@@ -499,16 +532,19 @@ class StandaloneUdsMonitor:
 
 
 class DatabaseRadarMonitor:
-    """Liest nur die Radar-Livesignale der angegebenen Vehicle-ID."""
+    """Liest die Radar-Livesignale ueber die Fahrzeugverbindung des TestControllers.
+
+    Der TestController haelt bereits die ISO-TP-Sockets zum Radar. Ein zweiter
+    Socket auf dieselben IDs wuerde ihm die Antworten wegnehmen.
+    """
 
     SIGNAL_MAPPING = {
         "distance": "radar_distance",
         "relative_speed": "radar_relative_speed",
     }
 
-    def __init__(self, vehicle_id):
-        self.vehicle_id = vehicle_id
-        self.diagnostic = VehicleDiagnostic(vehicle_id)
+    def __init__(self, diagnostic):
+        self.diagnostic = diagnostic
         self.stop_event = threading.Event()
         self.lock = threading.Lock()
         self.thread = None
@@ -526,22 +562,11 @@ class DatabaseRadarMonitor:
         ]
         if not self.signal_names:
             raise ValueError(
-                f"Fuer Vehicle-ID {vehicle_id} ist weder 'distance' noch "
+                f"Fuer Vehicle-ID {diagnostic.vehicle_id} ist weder 'distance' noch "
                 "'relative_speed' konfiguriert."
             )
 
-        # Nur die Diagnoseparameter der benoetigten Radarsignale verbinden.
-        # DTC- und Identifikationskonfigurationen werden im Demo nicht verwendet.
-        unique_parameters = {}
-        for signal_name in self.signal_names:
-            parameter = self.diagnostic.signal_map[signal_name]
-            unique_parameters[parameter["id"]] = parameter
-        self.diagnostic.parameters = list(unique_parameters.values())
-        self.diagnostic.dtc_configs = []
-        self.diagnostic.identification_parameters = []
-
     def start(self):
-        self.diagnostic.connect()
         self.thread = threading.Thread(
             target=self._read_loop,
             name="DatabaseRadarMonitor",
@@ -607,15 +632,16 @@ class DatabaseRadarMonitor:
         self.stop_event.set()
         if self.thread is not None:
             self.thread.join(timeout=1.5)
-        self.diagnostic.disconnect()
-        if self.thread is not None and self.thread.is_alive():
-            self.thread.join(timeout=0.2)
 
 
-def expected_dynamic_distance(scenario, movement_elapsed_s):
-    start = scenario["start_distance_m"]
-    end = scenario["end_distance_m"]
-    duration = abs(end - start) / (scenario["velocity_kmh"] / 3.6)
+def dynamic_movement_duration(actual):
+    return abs(actual["end_distance_m"] - actual["start_distance_m"]) / (actual["velocity_kmh"] / 3.6)
+
+
+def expected_dynamic_distance(actual, movement_elapsed_s):
+    start = actual["start_distance_m"]
+    end = actual["end_distance_m"]
+    duration = dynamic_movement_duration(actual)
     progress = min(max(movement_elapsed_s / duration, 0.0), 1.0)
     return start + (end - start) * progress
 
@@ -701,6 +727,7 @@ def measurement_fieldnames(profile):
                 *radar_columns,
                 *diagnostic_columns,
                 *STANDARD_SIGNALS,
+                *RADEST_COLUMNS,
             ]
         )
     )
@@ -717,6 +744,7 @@ def write_sample(
     target_distance_m,
     scenario_velocity_kmh,
     profile,
+    extra=None,
 ):
     values = monitor.snapshot()
     if diagnostic_monitor is not None:
@@ -730,6 +758,7 @@ def write_sample(
         "phase": phase,
         "radest_target_distance_m": target_distance_m,
         "scenario_velocity_kmh": scenario_velocity_kmh,
+        **(extra or {}),
         **values,
     }
     writer.writerow(row)
@@ -749,6 +778,7 @@ def sample_for_duration(
     distance_function,
     velocity_kmh,
     profile,
+    extra=None,
 ):
     started = time.perf_counter()
     next_sample = started
@@ -772,6 +802,7 @@ def sample_for_duration(
             target_distance,
             velocity_kmh,
             profile,
+            extra,
         )
 
         if now >= next_print:
@@ -785,23 +816,63 @@ def sample_for_duration(
         time.sleep(max(0.0, next_sample - time.perf_counter()))
 
 
-def configure_radest_scenario(radest, scenario):
+def prepare_radest(controller, scenario):
+    """Stellt das Szenario ueber den TestController ein und liefert die RCS-Grenzen.
+
+    Die angeforderten Werte bleiben in scenario, die vom RadEsT tatsaechlich
+    uebernommenen Werte stehen danach in scenario["actual"].
+    """
     if scenario["type"] == "constant":
-        radest.target_set_distance(scenario["distance_m"])
-        actual_distance = radest.target_get_distance()
-        scenario["distance_m"] = actual_distance
-        return
+        result = controller.prepare_static_measurement(scenario["distance_m"])
+        scenario["actual"] = {"distance_m": result["radest_distance"]}
+        return result["rcs_limits"]
 
-    radest.scenario_distance_start(scenario["start_distance_m"])
-    radest.scenario_distance_end(scenario["end_distance_m"])
-    radest.scenario_velocity(scenario["velocity_kmh"])
+    result = controller.prepare_dynamic_measurement(
+        start_distance_m=scenario["start_distance_m"],
+        end_distance_m=scenario["end_distance_m"],
+        velocity_kmh=scenario["velocity_kmh"],
+        rcs_constant_state=scenario["rcs_constant_state"],
+        pre_hold_s=scenario["pre_hold_s"],
+        post_hold_s=scenario["post_hold_s"],
+    )
+    scenario["actual"] = {
+        "pre_hold_distance_m": result["pre_hold_distance"],
+        "start_distance_m": result["start_distance"],
+        "end_distance_m": result["end_distance"],
+        "velocity_kmh": result["velocity_kmh"],
+    }
+    return result["rcs_limits"]
 
-    scenario["start_distance_m"] = radest.scenario_get_distance_start()
-    scenario["end_distance_m"] = radest.scenario_get_distance_end()
-    scenario["velocity_kmh"] = radest.scenario_get_velocity()
 
-    radest.target_set_distance(scenario["start_distance_m"])
-    scenario["start_distance_m"] = radest.target_get_distance()
+def start_radest(controller, scenario, rcs_dbsm):
+    """Setzt die RCS ueber den TestController und liest die RadEsT-Temperatur."""
+    if scenario["type"] == "constant":
+        return controller.start_static_measurement(scenario["distance_m"], rcs_dbsm)
+
+    return controller.start_dynamic_measurement(
+        start_distance_m=scenario["start_distance_m"],
+        end_distance_m=scenario["end_distance_m"],
+        velocity_kmh=scenario["velocity_kmh"],
+        rcs_constant_state=scenario["rcs_constant_state"],
+        rcs_dbsm=rcs_dbsm,
+    )
+
+
+def radest_row_values(start_result):
+    setting = (start_result.get("rcs_radest_setting") or {}).get("values", {})
+    return {
+        "radest_rcs_dbsm": start_result.get("rcs_dbsm"),
+        "radest_tx_value": setting.get("txValue"),
+        "radest_att_set": setting.get("attSet"),
+        "radest_temperature_c": start_result.get("radest_temperature_c"),
+    }
+
+
+def rcs_limits_text(limits):
+    return (
+        f"{limits['rcs_min_dbsm']:.2f} bis {limits['rcs_max_dbsm']:.2f} dBsm "
+        f"(Polarisation {limits['polarization']}, EIRP {limits['eirp_dbm']:.2f} dBm)"
+    )
 
 
 def create_diagram(rows, output_file):
@@ -881,34 +952,68 @@ def main():
 
     fieldnames = measurement_fieldnames(profile)
 
-    if input("Zum Start START eingeben: ").strip() != "START":
-        print("Test nicht gestartet.")
-        return
-
-    radest = RadestDevice(RADEST_IP, RADEST_PORT)
+    controller = None
     monitor = None
     diagnostic_monitor = None
     radar_monitor = None
-    connected = False
-    original_distance = None
     scenario_thread = None
     scenario_error = []
     rows = []
     origin = time.perf_counter()
 
     try:
-        connected = radest.connect()
-        if not connected:
-            raise ConnectionError("Verbindung zum RadEsT fehlgeschlagen.")
+        # RadEsT, Precheck und RCS laufen ueber den TestController wie im
+        # gefuehrten Pruefablauf. Dabei wird auch die Radarverbindung aufgebaut.
+        controller = TestController(vehicle_id, radest_ip=RADEST_IP, radest_port=RADEST_PORT)
+        controller.connect()
 
-        try:
-            original_distance = radest.target_get_distance()
-        except Exception:
-            original_distance = None
+        print("\nPrecheck")
+        if ask_choice("Auswahl", {"1": "Precheck durchfuehren", "2": "Precheck ueberspringen"}, "1") == "1":
+            precheck = controller.run_precheck()
+            print(
+                f"Precheck abgeschlossen: Polarisation {precheck['polarization']}, "
+                f"Frequenzbereich {precheck['frequency_range']}, Leistung {precheck['power']}"
+            )
+        else:
+            precheck = controller.skip_precheck()
+            print("Precheck uebersprungen.")
 
-        configure_radest_scenario(radest, scenario)
+        rcs_limits = prepare_radest(controller, scenario)
+        print(f"RCS-Bereich: {rcs_limits_text(rcs_limits)}")
+        rcs_dbsm = ask_float(
+            "RCS in dBsm",
+            min(max(10.0, rcs_limits["rcs_min_dbsm"]), rcs_limits["rcs_max_dbsm"]),
+            rcs_limits["rcs_min_dbsm"],
+            rcs_limits["rcs_max_dbsm"],
+        )
 
-        radar_monitor = DatabaseRadarMonitor(vehicle_id)
+        if input("Zum Start START eingeben: ").strip() != "START":
+            print("Test nicht gestartet.")
+            return
+
+        radest_result = start_radest(controller, scenario, rcs_dbsm)
+        radest_values = radest_row_values(radest_result)
+        (output_directory / "test_config.json").write_text(
+            json.dumps(
+                {
+                    "vehicle_id": vehicle_id,
+                    "scenario": scenario,
+                    "precheck": precheck,
+                    "radest": radest_result,
+                },
+                indent=2,
+                ensure_ascii=False,
+                default=str,
+            ),
+            encoding="utf-8",
+        )
+        print(
+            f"RCS gesetzt: {radest_values['radest_rcs_dbsm']} dBsm, "
+            f"txValue {radest_values['radest_tx_value']}, attSet {radest_values['radest_att_set']}, "
+            f"RadEsT-Temperatur {radest_values['radest_temperature_c']} degC"
+        )
+
+        radar_monitor = DatabaseRadarMonitor(controller.vehicle)
         radar_monitor.start()
 
         monitor = PassiveCanMonitor(CAN_CHANNEL, raw_can_csv, origin, can_signals(profile))
@@ -927,7 +1032,7 @@ def main():
         print(f"\nAusgabeordner: {output_directory}")
         print("Der komplette CAN-Bus wird passiv in can_raw.csv aufgezeichnet.")
         print(
-            f"Radar-Diagnose aus Datenbank aktiv: Vehicle-ID {vehicle_id}, "
+            f"Radar-Diagnose ueber TestController aktiv: Vehicle-ID {vehicle_id}, "
             f"Signale {', '.join(radar_monitor.signal_names)}."
         )
         if diagnostic_monitor is not None:
@@ -958,9 +1063,10 @@ def main():
                     origin,
                     scenario["duration_s"],
                     "constant",
-                    lambda _elapsed: scenario["distance_m"],
+                    lambda _elapsed: scenario["actual"]["distance_m"],
                     0.0,
                     profile,
+                    radest_values,
                 )
 
             else:
@@ -973,24 +1079,22 @@ def main():
                     origin,
                     scenario["pre_hold_s"],
                     "pre_hold",
-                    lambda _elapsed: scenario["start_distance_m"],
-                    scenario["velocity_kmh"],
+                    lambda _elapsed: scenario["actual"]["pre_hold_distance_m"],
+                    scenario["actual"]["velocity_kmh"],
                     profile,
+                    radest_values,
                 )
 
                 def trigger_scenario():
                     try:
-                        radest.scenario_trigger()
+                        controller.radest.scenario_trigger()
                     except Exception as error:
                         scenario_error.append(error)
 
                 scenario_thread = threading.Thread(target=trigger_scenario, name="RadestScenario", daemon=True)
                 scenario_thread.start()
 
-                movement_duration = (
-                    abs(scenario["end_distance_m"] - scenario["start_distance_m"])
-                    / (scenario["velocity_kmh"] / 3.6)
-                )
+                movement_duration = dynamic_movement_duration(scenario["actual"])
                 sample_for_duration(
                     writer,
                     rows,
@@ -1000,9 +1104,10 @@ def main():
                     origin,
                     movement_duration,
                     "moving",
-                    lambda elapsed: expected_dynamic_distance(scenario, elapsed),
-                    scenario["velocity_kmh"],
+                    lambda elapsed: expected_dynamic_distance(scenario["actual"], elapsed),
+                    scenario["actual"]["velocity_kmh"],
                     profile,
+                    radest_values,
                 )
 
                 sample_for_duration(
@@ -1014,9 +1119,10 @@ def main():
                     origin,
                     scenario["post_hold_s"],
                     "post_hold",
-                    lambda _elapsed: scenario["end_distance_m"],
-                    scenario["velocity_kmh"],
+                    lambda _elapsed: scenario["actual"]["end_distance_m"],
+                    scenario["actual"]["velocity_kmh"],
                     profile,
+                    radest_values,
                 )
 
                 scenario_thread.join(timeout=1.0)
@@ -1052,20 +1158,9 @@ def main():
         if radar_monitor is not None:
             radar_monitor.stop()
 
-        # Waehrend SCENARIO:TRIGGER noch blockiert, darf derselbe Socket nicht
-        # fuer einen weiteren Befehl verwendet werden.
-        scenario_running = scenario_thread is not None and scenario_thread.is_alive()
-
-        if connected and not scenario_running and original_distance is not None:
-            try:
-                radest.target_set_distance(original_distance)
-                print(f"Urspruengliche Zieldistanz wiederhergestellt: {original_distance:.2f} m")
-            except Exception as error:
-                print(f"WARNUNG: Zieldistanz konnte nicht wiederhergestellt werden: {error}")
-
-        if connected:
-            radest.disconnect()
-            print("RadEsT-Verbindung getrennt.")
+        if controller is not None:
+            controller.disconnect()
+            print("RadEsT- und Fahrzeugverbindung getrennt.")
 
 
 if __name__ == "__main__":
