@@ -38,13 +38,9 @@ from pydantic import BaseModel
 from database.database import get_vehicles
 from demo_scripte.aeb_pruefstand_test import (
     CAN_CHANNEL,
-    DIAGNOSTIC_DIDS,
-    DIAGNOSTIC_ENABLED,
-    DIAGNOSTIC_SIGNALS,
     RADEST_IP,
     RADEST_PORT,
     SAMPLE_INTERVAL_S,
-    SIGNALS,
     DatabaseRadarMonitor,
     PassiveCanMonitor,
     RadestDevice,
@@ -52,14 +48,20 @@ from demo_scripte.aeb_pruefstand_test import (
     configure_radest_scenario,
     create_diagram,
     expected_dynamic_distance,
+    measurement_fieldnames,
     write_sample,
+)
+from demo_scripte.fahrzeugprofile import (
+    can_signals,
+    profile_for_vehicle,
+    profile_summary,
+    uds_active,
+    uds_signals,
 )
 
 
 HOST = "0.0.0.0"
 PORT = 8001
-BRAKE_PRESSURE_THRESHOLD_BAR = 2.0
-DECELERATION_THRESHOLD_MPS2 = -1.5
 
 
 class TestConfig(BaseModel):
@@ -130,42 +132,6 @@ def make_scenario(config):
     }
 
 
-def measurement_fieldnames():
-    signal_columns = []
-    for signal_name in SIGNALS:
-        signal_columns.extend((signal_name, f"{signal_name}_age_s"))
-    radar_columns = [
-        "radar_distance",
-        "radar_distance_age_s",
-        "radar_relative_speed",
-        "radar_relative_speed_age_s",
-        "radar_diagnostic_status",
-        "radar_diagnostic_error",
-    ]
-    diagnostic_columns = []
-    for did in DIAGNOSTIC_DIDS:
-        prefix = f"diagnostic_{did:04x}"
-        diagnostic_columns.extend(
-            (
-                f"{prefix}_response_hex",
-                f"{prefix}_response_age_s",
-                f"{prefix}_status",
-                f"{prefix}_error",
-            )
-        )
-    diagnostic_columns.extend(name for name in DIAGNOSTIC_SIGNALS if name not in SIGNALS)
-    return [
-        "timestamp_unix_ns",
-        "elapsed_s",
-        "phase",
-        "radest_target_distance_m",
-        "scenario_velocity_kmh",
-        *signal_columns,
-        *radar_columns,
-        *diagnostic_columns,
-    ]
-
-
 class AebWebRunner:
     def __init__(self):
         self.lock = threading.RLock()
@@ -180,6 +146,7 @@ class AebWebRunner:
         self.finished_at = None
         self.brake_onset_s = None
         self.latest = None
+        self.profile = None
 
     def snapshot(self, include_history=False):
         with self.lock:
@@ -219,9 +186,12 @@ class AebWebRunner:
             result["details"]["can"] = str(error)
 
         try:
+            profile = profile_for_vehicle(config.vehicle_id)
             radar = DatabaseRadarMonitor(config.vehicle_id)
             result["vehicle"] = True
-            result["details"]["vehicle"] = f"Radar-Signale: {', '.join(radar.signal_names)}"
+            result["details"]["vehicle"] = (
+                f"Radar-Signale: {', '.join(radar.signal_names)} | {profile_summary(profile)}"
+            )
         except Exception as error:
             result["details"]["vehicle"] = str(error)
 
@@ -246,6 +216,7 @@ class AebWebRunner:
 
     def start(self, config):
         validate_config(config)
+        profile = profile_for_vehicle(config.vehicle_id)
         with self.lock:
             if self.thread is not None and self.thread.is_alive():
                 raise RuntimeError("Es laeuft bereits ein Pruefstandstest.")
@@ -254,11 +225,14 @@ class AebWebRunner:
             self.history.clear()
             self.latest = None
             self.brake_onset_s = None
+            self.profile = profile
             self.finished_at = None
             self.started_at = datetime.now().isoformat(timespec="seconds")
             self.status = "startet"
             self.message = "RadEsT und Diagnose werden verbunden."
-            self.thread = threading.Thread(target=self._run, args=(config,), name="AebWebTest", daemon=True)
+            self.thread = threading.Thread(
+                target=self._run, args=(config, profile), name="AebWebTest", daemon=True
+            )
             self.thread.start()
         return self.snapshot()
 
@@ -273,21 +247,19 @@ class AebWebRunner:
         return self.snapshot()
 
     def _publish_row(self, row):
-        speeds = [
-            row.get(name)
-            for name in ("wheel_speed_fl", "wheel_speed_fr", "wheel_speed_rl", "wheel_speed_rr")
-            if row.get(name) is not None
-        ]
         web_row = dict(row)
-        web_row["vehicle_speed_avg"] = sum(speeds) / len(speeds) if speeds else None
 
         if self.brake_onset_s is None:
-            pressure = row.get("main_brake_pressure")
+            thresholds = self.profile["brake_onset"]
+            pressure = row.get("brake_pressure")
             acceleration = row.get("longitudinal_acceleration")
+            pedal = row.get("brake_pedal_pressed")
             if (
-                pressure is not None and pressure >= BRAKE_PRESSURE_THRESHOLD_BAR
+                pressure is not None and pressure >= thresholds["pressure_bar"]
             ) or (
-                acceleration is not None and acceleration <= DECELERATION_THRESHOLD_MPS2
+                acceleration is not None and acceleration <= thresholds["deceleration_mps2"]
+            ) or (
+                pedal is not None and pedal >= 1
             ):
                 self.brake_onset_s = row["elapsed_s"]
 
@@ -328,13 +300,14 @@ class AebWebRunner:
                 phase,
                 target_distance,
                 velocity_kmh,
+                self.profile,
             )
             file.flush()
             self._publish_row(rows[-1])
             next_sample += SAMPLE_INTERVAL_S
             self.stop_event.wait(max(0.0, next_sample - time.perf_counter()))
 
-    def _run(self, config):
+    def _run(self, config, profile):
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         output_directory = PROJECT_ROOT / "test_runs" / f"aeb_bench_{timestamp}"
         output_directory.mkdir(parents=True, exist_ok=True)
@@ -348,6 +321,7 @@ class AebWebRunner:
             self.output_directory = output_directory
 
         config_data = config.model_dump() if hasattr(config, "model_dump") else config.dict()
+        config_data["vehicle_profile"] = profile
         config_file.write_text(
             json.dumps(config_data, indent=2, ensure_ascii=False),
             encoding="utf-8",
@@ -383,11 +357,17 @@ class AebWebRunner:
             configure_radest_scenario(radest, scenario)
             radar_monitor = DatabaseRadarMonitor(config.vehicle_id)
             radar_monitor.start()
-            monitor = PassiveCanMonitor(config.can_channel.strip(), raw_can_csv, origin)
+            monitor = PassiveCanMonitor(
+                config.can_channel.strip(), raw_can_csv, origin, can_signals(profile)
+            )
             monitor.start()
-            if DIAGNOSTIC_ENABLED:
+            if uds_active(profile):
                 diagnostic_monitor = StandaloneUdsMonitor(
-                    config.can_channel.strip(), diagnostic_raw_csv, origin
+                    config.can_channel.strip(),
+                    diagnostic_raw_csv,
+                    origin,
+                    profile["uds"],
+                    uds_signals(profile),
                 )
                 diagnostic_monitor.start()
 
@@ -405,7 +385,7 @@ class AebWebRunner:
             self._set_state("laeuft", "Messung laeuft.")
 
             with measurement_csv.open("w", newline="", encoding="utf-8") as file:
-                writer = csv.DictWriter(file, fieldnames=measurement_fieldnames(), delimiter=";")
+                writer = csv.DictWriter(file, fieldnames=measurement_fieldnames(profile), delimiter=";")
                 writer.writeheader()
 
                 if scenario["type"] == "constant":
@@ -637,7 +617,7 @@ const num=id=>Number($(id).value.replace?.(',','.') ?? $(id).value);
 function payload(){return {vehicle_id:Number($('vehicle').value),can_channel:$('channel').value.trim(),scenario_type:$('type').value,distance_m:num('distance'),duration_s:num('duration'),start_distance_m:num('startDistance'),end_distance_m:num('endDistance'),velocity_kmh:num('velocity'),pre_hold_s:num('preHold'),post_hold_s:num('postHold'),set_attenuation:$('setAtt').checked,attenuation_db:num('attenuation')}}
 function scenarioFields(){const constant=$('type').value==='constant';document.querySelectorAll('.dynamic').forEach(e=>e.classList.toggle('hidden',constant));document.querySelectorAll('.constant').forEach(e=>e.classList.toggle('hidden',!constant))}
 function fmt(value,unit,digits=2){return value===null||value===undefined||!Number.isFinite(Number(value))?'–':`${Number(value).toFixed(digits)} ${unit}`}
-function setLive(r){if(!r)return;$('target').textContent=fmt(r.radest_target_distance_m,'m');$('radar').textContent=fmt(r.radar_distance,'m');$('relative').textContent=fmt(r.radar_relative_speed,'km/h');$('speed').textContent=fmt(r.vehicle_speed_avg,'km/h');$('brake').textContent=fmt(r.main_brake_pressure,'bar');$('accel').textContent=fmt(r.longitudinal_acceleration,'m/s²');$('steering').textContent=fmt(r.steering_angle,'°');$('yaw').textContent=fmt(r.yaw_rate,'°/s')}
+function setLive(r){if(!r)return;$('target').textContent=fmt(r.radest_target_distance_m,'m');$('radar').textContent=fmt(r.radar_distance,'m');$('relative').textContent=fmt(r.radar_relative_speed,'km/h');$('speed').textContent=fmt(r.vehicle_speed,'km/h');$('brake').textContent=r.brake_pressure==null&&r.brake_pedal_pressed!=null?(Number(r.brake_pedal_pressed)>=1?'betätigt':'frei'):fmt(r.brake_pressure,'bar');$('accel').textContent=fmt(r.longitudinal_acceleration,'m/s²');$('steering').textContent=fmt(r.steering_angle,'°');$('yaw').textContent=fmt(r.yaw_rate,'°/s')}
 function setState(s){$('status').textContent=s.status;$('message').textContent=s.message||'';$('output').textContent=s.output_directory?`Ausgabe: ${s.output_directory}`:'Noch kein Ausgabeordner angelegt.';const running=!!s.running;$('start').disabled=running;$('check').disabled=running;$('stop').disabled=!running;document.querySelectorAll('.form input,.form select').forEach(e=>e.disabled=running||e.id==='attenuation'&&!$('setAtt').checked);if(s.started_at&&!startedAt)startedAt=new Date(s.started_at);if(!s.running&&['abgeschlossen','abgebrochen','fehler'].includes(s.status))startedAt=null;if(s.history){rows=s.history.slice()}if(s.latest){if(!rows.length||rows.at(-1).elapsed_s!==s.latest.elapsed_s)rows.push(s.latest);if(rows.length>3600)rows.shift();setLive(s.latest)}$('brakeCard').classList.toggle('active',s.brake_onset_s!==null&&s.brake_onset_s!==undefined);drawAll()}
 async function post(url){const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:url.endsWith('/stop')?null:JSON.stringify(payload())});const data=await res.json();if(!res.ok)throw new Error(data.detail||'Fehler');return data}
 $('type').onchange=scenarioFields;$('setAtt').onchange=()=>{$('attenuation').disabled=!$('setAtt').checked};
@@ -652,7 +632,7 @@ function bounds(values,fallback=[0,1]){const v=values.filter(Number.isFinite);if
 function base(canvas,leftLabel,rightLabel){const {c,w,h}=prepare(canvas);c.clearRect(0,0,w,h);const p={l:52,r:rightLabel?52:18,t:14,b:30};c.strokeStyle='#dce8e2';c.fillStyle='#607681';c.font='11px Arial';for(let i=0;i<=4;i++){const y=p.t+(h-p.t-p.b)*i/4;c.beginPath();c.moveTo(p.l,y);c.lineTo(w-p.r,y);c.stroke()}c.fillText('Zeit [s]',w/2-20,h-7);c.save();c.translate(13,h/2);c.rotate(-Math.PI/2);c.fillText(leftLabel,0,0);c.restore();if(rightLabel){c.save();c.translate(w-7,h/2);c.rotate(-Math.PI/2);c.fillText(rightLabel,0,0);c.restore()}return {c,w,h,p}}
 function line(ctx,values,color,xmin,xmax,ymin,ymax,right=false){const {c,w,h,p}=ctx;c.strokeStyle=color;c.lineWidth=2;c.beginPath();let open=false;values.forEach((v,i)=>{if(!Number.isFinite(v)){open=false;return}const x=p.l+(w-p.l-p.r)*((rows[i].elapsed_s-xmin)/(xmax-xmin||1));const y=p.t+(h-p.t-p.b)*(1-(v-ymin)/(ymax-ymin||1));if(!open){c.moveTo(x,y);open=true}else c.lineTo(x,y)});c.stroke()}
 function labels(ctx,min,max,right=false){const {c,w,h,p}=ctx;c.fillStyle='#607681';c.font='10px Arial';c.textAlign=right?'left':'right';for(let i=0;i<=4;i++){const val=max-(max-min)*i/4;const x=right?w-p.r+5:p.l-5;const y=p.t+(h-p.t-p.b)*i/4+3;c.fillText(val.toFixed(1),x,y)}c.textAlign='left'}
-function drawAll(){if(!rows.length){prepare($('distanceChart')).c.clearRect(0,0,$('distanceChart').width,$('distanceChart').height);prepare($('reactionChart')).c.clearRect(0,0,$('reactionChart').width,$('reactionChart').height);return}const xmin=Number(rows[0].elapsed_s),xmax=Number(rows.at(-1).elapsed_s)||1;let a=base($('distanceChart'),'Distanz [m]');const target=rows.map(r=>Number(r.radest_target_distance_m)),radar=rows.map(r=>r.radar_distance==null?NaN:Number(r.radar_distance));const db=bounds([...target,...radar],[0,50]);labels(a,...db);line(a,target,'#008143',xmin,xmax,...db);line(a,radar,'#d58a00',xmin,xmax,...db);let b=base($('reactionChart'),'km/h · bar');const speed=rows.map(r=>r.vehicle_speed_avg==null?NaN:Number(r.vehicle_speed_avg)),brake=rows.map(r=>r.main_brake_pressure==null?NaN:Number(r.main_brake_pressure));const lb=bounds([...speed,...brake],[0,10]);labels(b,...lb);line(b,speed,'#1976d2',xmin,xmax,...lb);line(b,brake,'#d24632',xmin,xmax,...lb)}
+function drawAll(){if(!rows.length){prepare($('distanceChart')).c.clearRect(0,0,$('distanceChart').width,$('distanceChart').height);prepare($('reactionChart')).c.clearRect(0,0,$('reactionChart').width,$('reactionChart').height);return}const xmin=Number(rows[0].elapsed_s),xmax=Number(rows.at(-1).elapsed_s)||1;let a=base($('distanceChart'),'Distanz [m]');const target=rows.map(r=>Number(r.radest_target_distance_m)),radar=rows.map(r=>r.radar_distance==null?NaN:Number(r.radar_distance));const db=bounds([...target,...radar],[0,50]);labels(a,...db);line(a,target,'#008143',xmin,xmax,...db);line(a,radar,'#d58a00',xmin,xmax,...db);let b=base($('reactionChart'),'km/h · bar');const speed=rows.map(r=>r.vehicle_speed==null?NaN:Number(r.vehicle_speed)),brake=rows.map(r=>r.brake_pressure==null?NaN:Number(r.brake_pressure));const lb=bounds([...speed,...brake],[0,10]);labels(b,...lb);line(b,speed,'#1976d2',xmin,xmax,...lb);line(b,brake,'#d24632',xmin,xmax,...lb)}
 async function init(){scenarioFields();try{const r=await fetch('/api/config').then(x=>x.json());$('vehicle').innerHTML=r.vehicles.map(v=>`<option value="${v.id}">${escapeHtml(v.name)} · ID ${v.id}</option>`).join('');$('channel').value=r.defaults.can_channel;setState(await fetch('/api/status').then(x=>x.json()))}catch(e){$('message').textContent=e.message}connectWs();timer();window.addEventListener('resize',drawAll)}init();
 </script></body></html>'''
 

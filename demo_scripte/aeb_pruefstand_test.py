@@ -2,18 +2,20 @@
 
 Das Skript schreibt nichts in die Fahrzeugdatenbank. Es liest lediglich die
 Radar-Diagnosekonfiguration des beim Start angegebenen Fahrzeugs. Die
-ESP-/Bremswerte werden unabhaengig davon aus den lokal konfigurierten UDS-DIDs
-gelesen. Der CAN-Bus wird zusaetzlich passiv aufgezeichnet.
+ESP-/Bremswerte werden unabhaengig davon ueber das Fahrzeugprofil aus
+demo_scripte/fahrzeugprofile/ gelesen (UDS-DIDs und/oder passiv mitgelesene
+CAN-Frames). Der CAN-Bus wird zusaetzlich komplett passiv aufgezeichnet.
 
 Start aus dem Projektordner:
     python demo_scripte/aeb_pruefstand_test.py
 
 Wichtig: Dieses Skript ersetzt weder die Pruefstandsfreigabe noch einen
-hardwareseitigen Not-Aus. Es sendet die unten konfigurierten Diagnoseanfragen,
+hardwareseitigen Not-Aus. Es sendet die im Profil konfigurierten Diagnoseanfragen,
 steuert den Rollenpruefstand aber nicht.
 """
 
 import csv
+import json
 import math
 import socket
 import struct
@@ -29,6 +31,16 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from demo_scripte.fahrzeugprofile import (
+    STANDARD_SIGNALS,
+    can_signals,
+    profile_for_vehicle,
+    profile_summary,
+    standard_values,
+    uds_active,
+    uds_dids,
+    uds_signals,
+)
 from diagnostics.vehicle import VehicleDiagnostic
 from radest.device import RadestDevice
 
@@ -51,130 +63,11 @@ MAX_SIGNAL_AGE_S = 0.5
 # LOKALE UDS-DIAGNOSE (KEINE DATENBANK)
 # ======================================================
 
-# ESP-Diagnosedaten aus den mitgeschnittenen Diagnosetests:
-#   0x7E2  22 20 01 -> 0x7EA  62 20 01 ...  (Raddrehzahlen)
-#   0x7E2  22 20 02 -> 0x7EA  62 20 02 ...  (Brems-/ESP-Sensoren)
-DIAGNOSTIC_ENABLED = True
-DIAGNOSTIC_REQUEST_ID = 0x7E2
-DIAGNOSTIC_RESPONSE_ID = 0x7EA
-DIAGNOSTIC_SERVICE = 0x22
-DIAGNOSTIC_DIDS = (0x2001, 0x2002)
+# Adressen, DIDs, CAN-IDs und Signaldefinitionen stehen fahrzeugspezifisch in
+# demo_scripte/fahrzeugprofile/. Das Profil wird ueber die Vehicle-ID gewaehlt.
 DIAGNOSTIC_INTERVAL_S = 0.10
 DIAGNOSTIC_TIMEOUT_S = 0.50
-DIAGNOSTIC_TX_PADDING = 0x00
 RADAR_INTERVAL_S = 0.05
-
-# start_byte zaehlt jeweils ab dem ersten Datenbyte NACH "62 DID_H DID_L".
-# Solange Byteposition und Umrechnung noch unbekannt sind, bleibt start_byte
-# auf None. Die kompletten Antworten werden trotzdem in diagnostic_raw.csv
-# gespeichert und koennen fuer das Reverse Engineering verglichen werden.
-DIAGNOSTIC_SIGNALS = {
-    "wheel_speed_fl": {
-        "did": 0x2001,
-        "start_byte": 3,
-        "length": 2,
-        "byte_order": "big",
-        "signed": False,
-        "factor": 0.01,
-        "offset": 0.0,
-        "unit": "km/h",
-    },
-    "wheel_speed_fr": {
-        "did": 0x2001,
-        "start_byte": 5,
-        "length": 2,
-        "byte_order": "big",
-        "signed": False,
-        "factor": 0.01,
-        "offset": 0.0,
-        "unit": "km/h",
-    },
-    "wheel_speed_rl": {
-        "did": 0x2001,
-        "start_byte": 7,
-        "length": 2,
-        "byte_order": "big",
-        "signed": False,
-        "factor": 0.01,
-        "offset": 0.0,
-        "unit": "km/h",
-    },
-    "wheel_speed_rr": {
-        "did": 0x2001,
-        "start_byte": 9,
-        "length": 2,
-        "byte_order": "big",
-        "signed": False,
-        "factor": 0.01,
-        "offset": 0.0,
-        "unit": "km/h",
-    },
-    "main_brake_pressure": {
-        "did": 0x2002,
-        "start_byte": 15,
-        "length": 2,
-        "byte_order": "big",
-        "signed": True,
-        "factor": 0.01000091556,
-        "offset": 0.0,
-        "unit": "bar",
-    },
-    "brake_circuit_2_pressure": {
-        "did": 0x2002,
-        "start_byte": 18,
-        "length": 2,
-        "byte_order": "big",
-        "signed": True,
-        "factor": 0.01000091556,
-        "offset": 0.0,
-        "unit": "bar",
-    },
-    "steering_angle": {
-        "did": 0x2002,
-        "start_byte": 12,
-        "length": 2,
-        "byte_order": "big",
-        "signed": True,
-        "factor": 0.04375133518,
-        "offset": 0.0,
-        "unit": "deg",
-    },
-    "longitudinal_acceleration": {
-        "did": 0x2002,
-        "start_byte": 3,
-        "length": 2,
-        "byte_order": "big",
-        "signed": True,
-        "factor": 0.0980999176,
-        "offset": 0.0,
-        "unit": "m/s^2",
-    },
-    "lateral_acceleration": {
-        "did": 0x2002,
-        "start_byte": 6,
-        "length": 2,
-        "byte_order": "big",
-        "signed": True,
-        "factor": 0.0980999176,
-        "offset": 0.0,
-        "unit": "m/s^2",
-    },
-    "yaw_rate": {
-        "did": 0x2002,
-        "start_byte": 9,
-        "length": 2,
-        "byte_order": "big",
-        "signed": True,
-        "factor": 0.002859889523,
-        "offset": 0.0,
-        "unit": "deg/s",
-    },
-}
-
-
-# Es sind keine lokal dekodierten zyklischen CAN-Signale konfiguriert.
-# Die Roh-CAN-Aufzeichnung bleibt unabhaengig davon aktiv.
-SIGNALS = {}
 
 CAN_FRAME = struct.Struct("=IB3x8s")
 CAN_EFF_MASK = 0x1FFFFFFF
@@ -257,6 +150,16 @@ def decode_signal(data, definition):
         return None
 
     start = int(configured_start)
+
+    # Bitsignal innerhalb eines Bytes, Bit 0 = niederwertigstes Bit.
+    if "bit" in definition:
+        bit = definition["bit"]
+        bit_length = int(definition.get("bit_length", 1))
+        if bit is None or start < 0 or start >= len(data) or not 0 <= int(bit) <= 8 - bit_length:
+            return None
+        raw = (data[start] >> int(bit)) & ((1 << bit_length) - 1)
+        return raw * float(definition.get("factor", 1.0)) + float(definition.get("offset", 0.0))
+
     length = int(definition["length"])
     end = start + length
 
@@ -274,10 +177,11 @@ def decode_signal(data, definition):
 class PassiveCanMonitor:
     """Empfaengt klassische CAN-Frames, sendet aber selbst keine Nachrichten."""
 
-    def __init__(self, channel, raw_csv_file, time_origin):
+    def __init__(self, channel, raw_csv_file, time_origin, signals=None):
         self.channel = channel
         self.raw_csv_file = raw_csv_file
         self.time_origin = time_origin
+        self.signals = dict(signals or {})
         self.socket = None
         self.thread = None
         self.stop_event = threading.Event()
@@ -346,7 +250,7 @@ class PassiveCanMonitor:
         with self.lock:
             frames = dict(self.latest_frames)
 
-        for name, definition in SIGNALS.items():
+        for name, definition in self.signals.items():
             configured_id = definition.get("can_id")
             if configured_id is None:
                 values[name] = None
@@ -376,12 +280,18 @@ class PassiveCanMonitor:
 
 
 class StandaloneUdsMonitor:
-    """Fragt mehrere lokal konfigurierte DIDs zyklisch ohne Datenbank ab."""
+    """Fragt die DIDs aus dem Fahrzeugprofil zyklisch ohne Datenbank ab."""
 
-    def __init__(self, channel, raw_csv_file, time_origin):
+    def __init__(self, channel, raw_csv_file, time_origin, uds_config, signals):
         self.channel = channel
         self.raw_csv_file = raw_csv_file
         self.time_origin = time_origin
+        self.request_id = int(uds_config["request_id"])
+        self.response_id = int(uds_config["response_id"])
+        self.service = int(uds_config.get("service", 0x22))
+        self.dids = tuple(int(did) for did in uds_config["dids"])
+        self.tx_padding = int(uds_config.get("tx_padding", 0x00))
+        self.signals = dict(signals)
         self.socket = None
         self.thread = None
         self.stop_event = threading.Event()
@@ -390,7 +300,7 @@ class StandaloneUdsMonitor:
         self.latest_received_at = {}
         self.latest_status = {
             did: "noch_nicht_abgefragt"
-            for did in DIAGNOSTIC_DIDS
+            for did in self.dids
         }
         self.latest_errors = {}
         self.error = None
@@ -406,7 +316,7 @@ class StandaloneUdsMonitor:
             CAN_ISOTP_TX_PADDING,
             0,
             0,
-            DIAGNOSTIC_TX_PADDING,
+            self.tx_padding,
             0,
             0,
         )
@@ -417,8 +327,8 @@ class StandaloneUdsMonitor:
         self.socket.bind(
             (
                 self.channel,
-                DIAGNOSTIC_RESPONSE_ID,
-                DIAGNOSTIC_REQUEST_ID,
+                self.response_id,
+                self.request_id,
             )
         )
 
@@ -429,8 +339,7 @@ class StandaloneUdsMonitor:
         )
         self.thread.start()
 
-    @staticmethod
-    def _validate_response(response, expected_did):
+    def _validate_response(self, response, expected_did):
         if not response:
             return "leer", "Leere Diagnoseantwort"
 
@@ -439,7 +348,7 @@ class StandaloneUdsMonitor:
                 return "negative_antwort", f"NRC 0x{response[2]:02X}"
             return "negative_antwort", "Ungueltige negative UDS-Antwort"
 
-        expected_service = (DIAGNOSTIC_SERVICE + 0x40) & 0xFF
+        expected_service = (self.service + 0x40) & 0xFF
         if len(response) < 3:
             return "ungueltig", "UDS-Antwort kuerzer als Service und DID"
         if response[0] != expected_service:
@@ -474,13 +383,13 @@ class StandaloneUdsMonitor:
                 while not self.stop_event.is_set():
                     cycle_started = time.perf_counter()
 
-                    for did in DIAGNOSTIC_DIDS:
+                    for did in self.dids:
                         if self.stop_event.is_set():
                             break
 
                         request = bytes(
                             [
-                                DIAGNOSTIC_SERVICE,
+                                self.service,
                                 (did >> 8) & 0xFF,
                                 did & 0xFF,
                             ]
@@ -514,9 +423,9 @@ class StandaloneUdsMonitor:
                             {
                                 "timestamp_unix_ns": time.time_ns(),
                                 "elapsed_s": f"{received_at - self.time_origin:.6f}",
-                                "request_id": f"0x{DIAGNOSTIC_REQUEST_ID:X}",
-                                "response_id": f"0x{DIAGNOSTIC_RESPONSE_ID:X}",
-                                "service": f"0x{DIAGNOSTIC_SERVICE:02X}",
+                                "request_id": f"0x{self.request_id:X}",
+                                "response_id": f"0x{self.response_id:X}",
+                                "service": f"0x{self.service:02X}",
                                 "did": f"0x{did:04X}",
                                 "status": status,
                                 "response_hex": response.hex(" ").upper() if response else "",
@@ -541,7 +450,7 @@ class StandaloneUdsMonitor:
             errors = dict(self.latest_errors)
 
         values = {}
-        for did in DIAGNOSTIC_DIDS:
+        for did in self.dids:
             prefix = f"diagnostic_{did:04x}"
             response = responses.get(did)
             received_at = received_times.get(did)
@@ -558,12 +467,12 @@ class StandaloneUdsMonitor:
             values[f"{prefix}_status"] = statuses.get(did)
             values[f"{prefix}_error"] = errors.get(did)
 
-        for name, definition in DIAGNOSTIC_SIGNALS.items():
+        for name, definition in self.signals.items():
             did = int(definition["did"])
             response = responses.get(did)
             expected_header = bytes(
                 [
-                    (DIAGNOSTIC_SERVICE + 0x40) & 0xFF,
+                    (self.service + 0x40) & 0xFF,
                     (did >> 8) & 0xFF,
                     did & 0xFF,
                 ]
@@ -577,13 +486,6 @@ class StandaloneUdsMonitor:
                 if payload is not None
                 else None
             )
-            if name in SIGNALS:
-                received_at = received_times.get(did)
-                values[f"{name}_age_s"] = (
-                    None
-                    if received_at is None
-                    else now - received_at
-                )
 
         return values
 
@@ -718,49 +620,90 @@ def expected_dynamic_distance(scenario, movement_elapsed_s):
     return start + (end - start) * progress
 
 
-def configured_signal_text(values):
+RADAR_UNITS = {
+    "radar_distance": "m",
+    "radar_relative_speed": "km/h",
+}
+
+
+def configured_signal_text(values, profile):
     parts = []
+    units = {**RADAR_UNITS, **STANDARD_SIGNALS}
     preferred = (
-        "wheel_speed_fl",
-        "wheel_speed_fr",
-        "wheel_speed_rl",
-        "wheel_speed_rr",
         "radar_distance",
         "radar_relative_speed",
-        "main_brake_pressure",
-        "brake_circuit_2_pressure",
-        "steering_angle",
-        "longitudinal_acceleration",
-        "lateral_acceleration",
-        "yaw_rate",
+        *STANDARD_SIGNALS,
     )
 
     for name in preferred:
         value = values.get(name)
         if value is None:
             continue
-        definition = SIGNALS.get(name) or DIAGNOSTIC_SIGNALS.get(name) or {}
-        radar_units = {
-            "radar_distance": "m",
-            "radar_relative_speed": "km/h",
-        }
-        unit = definition.get("unit", radar_units.get(name, ""))
+        unit = units.get(name, "")
         parts.append(f"{name}={value:.2f}{(' ' + unit) if unit else ''}")
 
     if parts:
         return " | ".join(parts)
 
+    dids = uds_dids(profile)
     diagnostic_statuses = [
         values.get(f"diagnostic_{did:04x}_status")
-        for did in DIAGNOSTIC_DIDS
+        for did in dids
     ]
     if any(diagnostic_statuses):
         status_text = ", ".join(
             f"0x{did:04X}={status}"
-            for did, status in zip(DIAGNOSTIC_DIDS, diagnostic_statuses)
+            for did, status in zip(dids, diagnostic_statuses)
         )
         return f"Diagnose: {status_text} | Signaldekodierung noch nicht vollstaendig konfiguriert"
     return "keine Live-Signale konfiguriert"
+
+
+def measurement_fieldnames(profile):
+    signal_columns = []
+    for signal_name in can_signals(profile):
+        signal_columns.extend((signal_name, f"{signal_name}_age_s"))
+
+    radar_columns = [
+        "radar_distance",
+        "radar_distance_age_s",
+        "radar_relative_speed",
+        "radar_relative_speed_age_s",
+        "radar_diagnostic_status",
+        "radar_diagnostic_error",
+    ]
+
+    diagnostic_columns = []
+    for did in uds_dids(profile):
+        prefix = f"diagnostic_{did:04x}"
+        diagnostic_columns.extend(
+            (
+                f"{prefix}_response_hex",
+                f"{prefix}_response_age_s",
+                f"{prefix}_status",
+                f"{prefix}_error",
+            )
+        )
+    if uds_active(profile):
+        diagnostic_columns.extend(uds_signals(profile))
+
+    # Standardsignale stehen bei jedem Fahrzeug in der CSV. Heisst ein
+    # Rohsignal genauso (z. B. steering_angle beim W213), bleibt es eine Spalte.
+    return list(
+        dict.fromkeys(
+            [
+                "timestamp_unix_ns",
+                "elapsed_s",
+                "phase",
+                "radest_target_distance_m",
+                "scenario_velocity_kmh",
+                *signal_columns,
+                *radar_columns,
+                *diagnostic_columns,
+                *STANDARD_SIGNALS,
+            ]
+        )
+    )
 
 
 def write_sample(
@@ -773,12 +716,14 @@ def write_sample(
     phase,
     target_distance_m,
     scenario_velocity_kmh,
+    profile,
 ):
     values = monitor.snapshot()
     if diagnostic_monitor is not None:
         values.update(diagnostic_monitor.snapshot())
     if radar_monitor is not None:
         values.update(radar_monitor.snapshot())
+    values.update(standard_values(profile, values))
     row = {
         "timestamp_unix_ns": time.time_ns(),
         "elapsed_s": time.perf_counter() - origin,
@@ -803,6 +748,7 @@ def sample_for_duration(
     phase,
     distance_function,
     velocity_kmh,
+    profile,
 ):
     started = time.perf_counter()
     next_sample = started
@@ -825,12 +771,13 @@ def sample_for_duration(
             phase,
             target_distance,
             velocity_kmh,
+            profile,
         )
 
         if now >= next_print:
             print(
                 f"t={now - origin:7.2f} s | Phase={phase:9s} | "
-                f"RadEsT={target_distance:7.2f} m | {configured_signal_text(values)}"
+                f"RadEsT={target_distance:7.2f} m | {configured_signal_text(values, profile)}"
             )
             next_print = now + 0.25
 
@@ -881,19 +828,7 @@ def create_diagram(rows, output_file):
     axes[0].legend()
     axes[0].grid(True, alpha=0.35)
 
-    speed_names = ("wheel_speed_fl", "wheel_speed_fr", "wheel_speed_rl", "wheel_speed_rr")
-    vehicle_speeds = []
-    for row in rows:
-        available_speeds = [
-            row.get(name)
-            for name in speed_names
-            if row.get(name) is not None
-        ]
-        vehicle_speeds.append(
-            sum(available_speeds) / len(available_speeds)
-            if available_speeds
-            else None
-        )
+    vehicle_speeds = [row.get("vehicle_speed") for row in rows]
     if any(value is not None for value in vehicle_speeds):
         axes[1].plot(
             times,
@@ -906,14 +841,13 @@ def create_diagram(rows, output_file):
         axes[1].legend()
     axes[1].grid(True, alpha=0.35)
 
-    for name in (
-        "main_brake_pressure",
-        "brake_circuit_2_pressure",
-
+    for name, label in (
+        ("brake_pressure", "Bremsdruck [bar]"),
+        ("brake_pedal_pressed", "Bremspedal betaetigt [0/1]"),
     ):
         values = [row.get(name) for row in rows]
         if any(value is not None for value in values):
-            axes[2].plot(times, values, label=name)
+            axes[2].plot(times, values, label=label)
     axes[2].set_ylabel("Bremse / AEB")
     axes[2].set_xlabel("Zeit [s]")
     if axes[2].lines:
@@ -929,6 +863,8 @@ def create_diagram(rows, output_file):
 
 def main():
     vehicle_id = ask_vehicle_id()
+    profile = profile_for_vehicle(vehicle_id)
+    print(profile_summary(profile))
     scenario = ask_scenario()
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     output_directory = PROJECT_ROOT / "test_runs" / f"aeb_bench_{timestamp}"
@@ -938,49 +874,13 @@ def main():
     raw_can_csv = output_directory / "can_raw.csv"
     diagnostic_raw_csv = output_directory / "diagnostic_raw.csv"
     diagram_file = output_directory / "measurement.png"
-
-    signal_columns = []
-    for signal_name in SIGNALS:
-        signal_columns.extend((signal_name, f"{signal_name}_age_s"))
-
-    radar_columns = [
-        "radar_distance",
-        "radar_distance_age_s",
-        "radar_relative_speed",
-        "radar_relative_speed_age_s",
-        "radar_diagnostic_status",
-        "radar_diagnostic_error",
-    ]
-
-    diagnostic_columns = []
-    for did in DIAGNOSTIC_DIDS:
-        prefix = f"diagnostic_{did:04x}"
-        diagnostic_columns.extend(
-            (
-                f"{prefix}_response_hex",
-                f"{prefix}_response_age_s",
-                f"{prefix}_status",
-                f"{prefix}_error",
-            )
-        )
-    diagnostic_columns.extend(
-        signal_name
-        for signal_name in DIAGNOSTIC_SIGNALS
-        if signal_name not in SIGNALS
+    (output_directory / "vehicle_profile.json").write_text(
+        json.dumps(profile, indent=2, ensure_ascii=False),
+        encoding="utf-8",
     )
 
-    fieldnames = [
-        "timestamp_unix_ns",
-        "elapsed_s",
-        "phase",
-        "radest_target_distance_m",
-        "scenario_velocity_kmh",
-        *signal_columns,
-        *radar_columns,
-        *diagnostic_columns,
-    ]
+    fieldnames = measurement_fieldnames(profile)
 
-     
     if input("Zum Start START eingeben: ").strip() != "START":
         print("Test nicht gestartet.")
         return
@@ -1011,11 +911,17 @@ def main():
         radar_monitor = DatabaseRadarMonitor(vehicle_id)
         radar_monitor.start()
 
-        monitor = PassiveCanMonitor(CAN_CHANNEL, raw_can_csv, origin)
+        monitor = PassiveCanMonitor(CAN_CHANNEL, raw_can_csv, origin, can_signals(profile))
         monitor.start()
 
-        if DIAGNOSTIC_ENABLED:
-            diagnostic_monitor = StandaloneUdsMonitor(CAN_CHANNEL, diagnostic_raw_csv, origin)
+        if uds_active(profile):
+            diagnostic_monitor = StandaloneUdsMonitor(
+                CAN_CHANNEL,
+                diagnostic_raw_csv,
+                origin,
+                profile["uds"],
+                uds_signals(profile),
+            )
             diagnostic_monitor.start()
 
         print(f"\nAusgabeordner: {output_directory}")
@@ -1025,11 +931,13 @@ def main():
             f"Signale {', '.join(radar_monitor.signal_names)}."
         )
         if diagnostic_monitor is not None:
-            did_text = ", ".join(f"0x{did:04X}" for did in DIAGNOSTIC_DIDS)
+            did_text = ", ".join(f"0x{did:04X}" for did in diagnostic_monitor.dids)
             print(
-                f"UDS-Abfrage aktiv: 0x{DIAGNOSTIC_REQUEST_ID:X} -> "
-                f"0x{DIAGNOSTIC_RESPONSE_ID:X}, DIDs {did_text}."
+                f"UDS-Abfrage aktiv: 0x{diagnostic_monitor.request_id:X} -> "
+                f"0x{diagnostic_monitor.response_id:X}, DIDs {did_text}."
             )
+        else:
+            print(f"UDS-Abfrage fuer {profile['name']} deaktiviert.")
         for number in range(3, 0, -1):
             print(f"Start in {number} ...")
             time.sleep(1.0)
@@ -1052,6 +960,7 @@ def main():
                     "constant",
                     lambda _elapsed: scenario["distance_m"],
                     0.0,
+                    profile,
                 )
 
             else:
@@ -1066,6 +975,7 @@ def main():
                     "pre_hold",
                     lambda _elapsed: scenario["start_distance_m"],
                     scenario["velocity_kmh"],
+                    profile,
                 )
 
                 def trigger_scenario():
@@ -1092,6 +1002,7 @@ def main():
                     "moving",
                     lambda elapsed: expected_dynamic_distance(scenario, elapsed),
                     scenario["velocity_kmh"],
+                    profile,
                 )
 
                 sample_for_duration(
@@ -1105,6 +1016,7 @@ def main():
                     "post_hold",
                     lambda _elapsed: scenario["end_distance_m"],
                     scenario["velocity_kmh"],
+                    profile,
                 )
 
                 scenario_thread.join(timeout=1.0)
