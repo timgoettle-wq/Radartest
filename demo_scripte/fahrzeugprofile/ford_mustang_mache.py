@@ -17,53 +17,51 @@ PROFILE = {
     "name": "Ford Mustang Mach-E",
     "vehicle_ids": (2,),
     "uds": {
-        # Erst einschalten, wenn Adressen und DIDs bekannt sind.
-        "enabled": False,
-        "request_id": None,  # TODO
-        "response_id": None,  # TODO
+        "enabled": True,
+        "request_id": 0x760,
+        "response_id": 0x768,
         "service": 0x22,
-        "dids": (),  # TODO
+        "dids": (0xDD09, 0x2B0D, 0x2B11, 0x2B0B),
         "tx_padding": 0x00,
     },
     "signals": {
         "vehicle_speed_raw": {
-            "source": "can",
-            "can_id": None,  # TODO
-            "start_byte": None,  # TODO
-            "length": 2,
-            "byte_order": "big",
-            "signed": False,
-            "factor": 1.0,  # TODO
-            "offset": 0.0,
-            "unit": "km/h",
+        "source": "uds",
+        "did": 0xDD09,
+        "start_byte": 3,
+        "length": 1, "byte_order": "big", "signed": False,
+        "factor": 1.0, "offset": 0.0, "unit": "km/h",
         },
         "brake_pressure_raw": {
-            "source": "can",
-            "can_id": None,  # TODO
-            "start_byte": None,  # TODO
-            "length": 2,
-            "byte_order": "big",
-            "signed": False,
-            "factor": 1.0,  # TODO
-            "offset": 0.0,
-            "unit": "bar",
+        "source": "uds",
+        "did": 0x2B0D,
+        "start_byte": 3,  
+        "length": 2, "byte_order": "big", "signed": True,
+        "factor": 0.333332316, "offset": 0.0, "unit": "bar",
         },
-        "brake_pedal_raw": {
-            "source": "can",
-            "can_id": None,  # TODO
-            "start_byte": None,  # TODO
-            "bit": None,  # TODO
-            "bit_length": 1,
-            "unit": "",
+        "longitudinal_acceleration_car": {
+        "source": "uds",
+        "did": 0x2B11,
+        "start_byte": 3,  
+        "length": 2, "byte_order": "big", "signed": True,
+        "factor": 0.00980665, "offset": 0.0, "unit": "m/s^2",
+        },
+        "yaw_rate_car": {
+        "source": "uds",
+        "did": 0x2B0B,
+        "start_byte": 3,  
+        "length": 2, "byte_order": "big", "signed": True,
+        "factor": 0.2, "offset": 0.0, "unit": "deg/s",
         },
     },
+
     "standard": {
         "vehicle_speed": {"from": "vehicle_speed_raw"},
         "brake_pressure": {"from": "brake_pressure_raw"},
-        "brake_pedal_pressed": {"from": "brake_pedal_raw"},
-        "longitudinal_acceleration": None,  # TODO
-        "steering_angle": None,  # TODO
-        "yaw_rate": None,  # TODO
+        "brake_pedal_pressed": None,
+        "longitudinal_acceleration": {"from": "longitudinal_acceleration_car"}, 
+        "steering_angle": None,  
+        "yaw_rate": {"from": "yaw_rate_car"},  
     },
     "brake_onset": {
         "pressure_bar": 2.0,
