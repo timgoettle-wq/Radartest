@@ -95,6 +95,10 @@ class TestController:
         self.dynamic_rcs_setting = None
         self._dynamic_rcs_prepared_configuration = None
 
+        # Detektortemperatur des RadEsT beim Start des aktuellen Tests
+        self.radest_temperature_c = None
+        self.radest_temperature_error = None
+
         self._scenario_thread = None
 
         self._dynamic_sequence_start_ns = None
@@ -700,6 +704,24 @@ class TestController:
         }
 
 
+    def _read_radest_temperature(self):
+
+        # Nur zwischen den Tests abfragen. Während eines laufenden
+        # Szenarios ist der RadEsT-Socket belegt.
+
+        try:
+            temperature_c = float(
+                self.radest.start_temperature_measurement_detector()
+            )
+        except Exception as error:
+            self.radest_temperature_c = None
+            self.radest_temperature_error = str(error)
+            return
+
+        self.radest_temperature_c = round(temperature_c, 2)
+        self.radest_temperature_error = None
+
+
     @staticmethod
     def _validate_rcs_value(rcs_dbsm, limits):
 
@@ -886,6 +908,8 @@ class TestController:
             )
         )
 
+        self._read_radest_temperature()
+
 
         self.static_test_active = True
 
@@ -912,7 +936,10 @@ class TestController:
                 self.static_rcs_limits,
 
             "rcs_radest_setting":
-                self.static_rcs_setting
+                self.static_rcs_setting,
+
+            "radest_temperature_c":
+                self.radest_temperature_c
         }
 
 
@@ -1234,6 +1261,8 @@ class TestController:
             )
         )
 
+        self._read_radest_temperature()
+
         self.static_test_active = False
         self.dynamic_test_active = True
         self._measurement_mode = "dynamic"
@@ -1257,7 +1286,8 @@ class TestController:
             "rcs_constant_state": self.dynamic_rcs_constant_state,
             "rcs_dbsm": self.dynamic_rcs_dbsm,
             "rcs_limits": self.dynamic_rcs_limits,
-            "rcs_radest_setting": self.dynamic_rcs_setting
+            "rcs_radest_setting": self.dynamic_rcs_setting,
+            "radest_temperature_c": self.radest_temperature_c
         }
 
 
@@ -2453,6 +2483,22 @@ class TestController:
 
         else:
             test_id = None
+
+        if test_id is not None:
+
+            temperature_values = {
+                "radest_temperature_start_c":
+                    self.radest_temperature_c
+            }
+
+            if self.radest_temperature_error is not None:
+                temperature_values[
+                    "radest_temperature_error"
+                ] = self.radest_temperature_error
+
+            self.test_run.update_active_test(
+                temperature_values
+            )
 
         self.measurement_logger.set_test_id(
             test_id
