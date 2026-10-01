@@ -160,6 +160,9 @@ class AebWebRunner:
         self.brake_onset_s = None
         self.latest = None
         self.profile = None
+        # Jede Messung bekommt eine eigene Nummer, damit die Weboberflaeche
+        # Zeilen eines vorherigen Tests nicht in das neue Diagramm uebernimmt.
+        self.run_id = 0
 
         # Sitzung: bleibt ueber mehrere Tests bestehen.
         self.controller = None
@@ -178,6 +181,7 @@ class AebWebRunner:
                 "status": self.status,
                 "message": self.message,
                 "sequence": self.sequence,
+                "run_id": self.run_id,
                 "running": self._running(),
                 "busy": self.busy,
                 "started_at": self.started_at,
@@ -364,6 +368,7 @@ class AebWebRunner:
             self.last_radest = radest_row_values(radest_result)
             self.stop_event.clear()
             self.sequence += 1
+            self.run_id += 1
             self.history.clear()
             self.latest = None
             self.brake_onset_s = None
@@ -398,6 +403,7 @@ class AebWebRunner:
 
     def _publish_row(self, row):
         web_row = dict(row)
+        web_row["run_id"] = self.run_id
 
         if self.brake_onset_s is None:
             thresholds = self.profile["brake_onset"]
@@ -782,7 +788,7 @@ PAGE = r'''<!doctype html>
   </div>
 </main>
 <script>
-const $=id=>document.getElementById(id); let rows=[]; let startedAt=null; let socket=null;
+const $=id=>document.getElementById(id); let rows=[]; let startedAt=null; let socket=null; let runId=null;
 const num=id=>Number($(id).value.replace?.(',','.') ?? $(id).value);
 function payload(){return {scenario_type:$('type').value,distance_m:num('distance'),duration_s:num('duration'),start_distance_m:num('startDistance'),end_distance_m:num('endDistance'),velocity_kmh:num('velocity'),pre_hold_s:num('preHold'),post_hold_s:num('postHold'),rcs_constant_state:Number($('rcsMode').value),rcs_dbsm:$('rcs').value===''?null:num('rcs')}}
 function scenarioFields(){const constant=$('type').value==='constant';document.querySelectorAll('.dynamic').forEach(e=>e.classList.toggle('hidden',constant));document.querySelectorAll('.constant').forEach(e=>e.classList.toggle('hidden',!constant))}
@@ -799,7 +805,7 @@ function setSession(s){const x=s.session||{};const busy=!!s.busy,running=!!s.run
   $('vehicle').disabled=$('channel').disabled=x.connected||!idle;$('connect').disabled=x.connected||!idle;$('disconnect').disabled=!x.connected||!idle;$('precheck').disabled=$('skipPrecheck').disabled=!x.connected||!idle;
   $('rcsLimits').disabled=!x.connected||!pre||!idle;$('rcs').disabled=!x.prepared||!idle;$('start').disabled=!x.prepared||!idle;$('stop').disabled=!running;
   document.querySelectorAll('.scenario,#duration').forEach(e=>e.disabled=!idle)}
-function setState(s){$('status').textContent=s.busy?`${s.busy} …`:s.status;$('message').textContent=s.message||'';$('output').textContent=s.output_directory?`Ausgabe: ${s.output_directory}`:'Noch kein Ausgabeordner angelegt.';setSession(s);if(s.started_at&&!startedAt)startedAt=new Date(s.started_at);if(!s.running&&['abgeschlossen','abgebrochen','fehler'].includes(s.status))startedAt=null;if(s.history){rows=s.history.slice()}if(s.latest){if(!rows.length||rows.at(-1).elapsed_s!==s.latest.elapsed_s)rows.push(s.latest);if(rows.length>3600)rows.shift();setLive(s.latest)}$('brakeCard').classList.toggle('active',s.brake_onset_s!==null&&s.brake_onset_s!==undefined);drawAll()}
+function setState(s){$('status').textContent=s.busy?`${s.busy} …`:s.status;$('message').textContent=s.message||'';$('output').textContent=s.output_directory?`Ausgabe: ${s.output_directory}`:'Noch kein Ausgabeordner angelegt.';setSession(s);if(s.started_at&&!startedAt)startedAt=new Date(s.started_at);if(!s.running&&['abgeschlossen','abgebrochen','fehler'].includes(s.status))startedAt=null;if(s.run_id!==undefined&&s.run_id!==runId){runId=s.run_id;rows=[]}if(s.history){rows=s.history.filter(r=>r.run_id===runId)}if(s.latest&&s.latest.run_id===runId){if(!rows.length||rows.at(-1).elapsed_s!==s.latest.elapsed_s)rows.push(s.latest);if(rows.length>3600)rows.shift();setLive(s.latest)}$('brakeCard').classList.toggle('active',s.brake_onset_s!==null&&s.brake_onset_s!==undefined);drawAll()}
 async function post(url,body){const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:body===undefined?null:JSON.stringify(body)});const data=await res.json();if(!res.ok)throw new Error(data.detail||'Fehler');return data}
 async function act(fn){try{setState(await fn())}catch(e){alert(e.message)}}
 $('type').onchange=scenarioFields;
@@ -808,7 +814,7 @@ $('disconnect').onclick=()=>act(()=>post('/api/disconnect'));
 $('precheck').onclick=()=>act(()=>post('/api/precheck'));
 $('skipPrecheck').onclick=()=>act(()=>post('/api/precheck/skip'));
 $('rcsLimits').onclick=()=>act(()=>post('/api/rcs-limits',payload()));
-$('start').onclick=()=>{if(!confirm('Prüfstand freigegeben und hardwareseitiger Not-Aus erreichbar?'))return;rows=[];startedAt=null;act(()=>post('/api/start',payload()))};
+$('start').onclick=()=>{if(!confirm('Prüfstand freigegeben und hardwareseitiger Not-Aus erreichbar?'))return;startedAt=null;act(()=>post('/api/start',payload()))};
 $('stop').onclick=()=>act(()=>post('/api/stop'));
 function escapeHtml(v){const d=document.createElement('div');d.textContent=v??'';return d.innerHTML}
 function connectWs(){const protocol=location.protocol==='https:'?'wss':'ws';socket=new WebSocket(`${protocol}://${location.host}/ws`);socket.onmessage=e=>setState(JSON.parse(e.data));socket.onclose=()=>setTimeout(connectWs,1000)}
