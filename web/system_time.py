@@ -32,7 +32,8 @@ def set_system_time(unix_s):
     )
 
 
-def make_system_time_router(measurement_running):
+def make_system_time_router(lock, measurement_running):
+    """``lock`` muss derselbe Lock sein, unter dem Messungen starten."""
     router = APIRouter(prefix="/api/system-time", tags=["Systemzeit"])
 
     @router.post("")
@@ -43,20 +44,21 @@ def make_system_time_router(measurement_running):
         if abs(offset_s) < MAX_DEVIATION_S:
             return {"changed": False, "offset_s": round(offset_s, 3)}
 
-        if measurement_running():
-            raise HTTPException(
-                status_code=409,
-                detail="Während einer Messung wird die Uhrzeit nicht verstellt.",
-            )
+        with lock:
+            if measurement_running():
+                raise HTTPException(
+                    status_code=409,
+                    detail="Während einer Messung wird die Uhrzeit nicht verstellt.",
+                )
 
-        try:
-            set_system_time(client_s)
-        except (OSError, subprocess.CalledProcessError) as error:
-            detail = getattr(error, "stderr", None) or str(error)
-            raise HTTPException(
-                status_code=500,
-                detail=f"Uhrzeit konnte nicht gesetzt werden: {detail.strip()}",
-            ) from error
+            try:
+                set_system_time(client_s)
+            except (OSError, subprocess.CalledProcessError) as error:
+                detail = getattr(error, "stderr", None) or str(error)
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Uhrzeit konnte nicht gesetzt werden: {detail.strip()}",
+                ) from error
 
         return {"changed": True, "offset_s": round(offset_s, 3)}
 

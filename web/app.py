@@ -39,6 +39,7 @@ app.include_router(make_database_router(
 ))
 app.include_router(results_router)
 app.include_router(make_system_time_router(
+    controller_lock,
     lambda: controller is not None and controller.is_measurement_running()
 ))
 

@@ -1,3 +1,4 @@
+import threading
 import time
 import unittest
 from unittest import mock
@@ -12,7 +13,9 @@ class SystemTimeTests(unittest.TestCase):
 
     def client(self, running=False):
         app = FastAPI()
-        app.include_router(system_time.make_system_time_router(lambda: running))
+        app.include_router(system_time.make_system_time_router(
+            threading.Lock(), lambda: running
+        ))
         return TestClient(app)
 
     def test_small_deviation_keeps_clock(self):

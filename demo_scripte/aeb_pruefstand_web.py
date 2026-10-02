@@ -623,6 +623,7 @@ class AebWebRunner:
 runner = AebWebRunner()
 app = FastAPI(title="AEB-Pruefstand Live")
 app.include_router(make_system_time_router(
+    runner.lock,
     lambda: runner.busy is not None or runner._running()
 ))
 
