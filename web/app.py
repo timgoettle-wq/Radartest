@@ -187,7 +187,11 @@ def get_system_status():
             controller.is_measurement_running()
         ),
         "latest_measurement": latest_measurement,
-        "log_file": log_file
+        "log_file": log_file,
+        # Arbeitspunkt des RadEsT (u. a. attSet) für die Anzeige nach
+        # einem Neuladen der Seite
+        "static_rcs_setting": controller.static_rcs_setting,
+        "dynamic_rcs_setting": controller.dynamic_rcs_setting
     }
 
 

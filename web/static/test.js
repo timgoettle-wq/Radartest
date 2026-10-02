@@ -505,6 +505,21 @@ function dynamicConfiguration() {
     };
 }
 
+// Vom RadEsT beim Setzen des RCS gemeldete Daempfungsstufe (ca. 4 dB je Schritt).
+function attSetValue(setting) {
+    const value = setting?.values?.attSet;
+    return value === null || value === undefined ? null : Number(value);
+}
+
+function showAttSet(configuration, setting) {
+    const attSet = attSetValue(setting);
+    $("radestAttSet").textContent = attSet === null ? "–" : fixed(attSet);
+    if (attSet !== null && configuration && !configuration.attSetShown) {
+        configuration.resultParameters += " · attSet " + fixed(attSet);
+        configuration.attSetShown = true;
+    }
+}
+
 function resetMeasurementDisplay(configuration) {
     uiState.samples = [];
     uiState.lastMeasurement = null;
@@ -516,7 +531,7 @@ function resetMeasurementDisplay(configuration) {
     $("measurementState").lastChild.textContent = "Live";
     ["requestedDistance", "radestDistance", "vehicleDistance", "distanceError", "angle",
         "relativeSpeed", "relativeAcceleration", "scenarioPhase", "scenarioProgress",
-        "scenarioDuration", "measurementElapsed"].forEach(id => $(id).textContent = "–");
+        "scenarioDuration", "measurementElapsed", "radestAttSet"].forEach(id => $(id).textContent = "–");
     $("scenarioStatus").textContent = "Läuft";
     $("stopButton").disabled = true;
     drawChart();
@@ -532,6 +547,7 @@ async function startConfiguredMeasurement(configuration) {
     try {
         const data = await apiRequest(configuration.url, {method: "POST"});
         uiState.logFile = data.log_file || null;
+        showAttSet(configuration, data.rcs_radest_setting);
         if (configuration.type === "static") {
             $("requestedDistance").textContent = fixed(data.requested_distance);
             $("radestDistance").textContent = fixed(data.radest_distance);
@@ -886,6 +902,12 @@ async function restoreStatus() {
             uiState.lastConfiguration = uiState.currentMeasurement;
             resetMeasurementDisplay(uiState.currentMeasurement);
             uiState.logFile = status.log_file || null;
+            showAttSet(
+                uiState.currentMeasurement,
+                latest.test_type === "dynamic"
+                    ? status.dynamic_rcs_setting
+                    : status.static_rcs_setting
+            );
             showMeasurementScreen();
             updateMeasurement(latest);
             startLiveMeasurement();

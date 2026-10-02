@@ -114,13 +114,21 @@ function parameterText(test) {
                 ? " · konstante RCS"
                 : " · variable RCS";
         }
-        return text;
+        return text + attSetText(parameters.rcs_radest_setting);
     }
     let text = formatNumber(test.requested_distance, 1, " m");
     if (test.rcs?.value_dbsm !== null && test.rcs?.value_dbsm !== undefined) {
         text += " · " + formatNumber(test.rcs.value_dbsm, 1, " dBsm");
     }
-    return text;
+    return text + attSetText(test.rcs?.radest_setting);
+}
+
+// attSet ist erst ab Tests vorhanden, bei denen die RadEsT-Antwort
+// gespeichert wurde.
+function attSetText(setting) {
+    const value = setting?.values?.attSet;
+    if (value === null || value === undefined) return "";
+    return " · attSet " + formatNumber(value, 2);
 }
 
 function showView(id) {
