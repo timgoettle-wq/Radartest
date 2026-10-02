@@ -56,6 +56,7 @@ from demo_scripte.aeb_pruefstand_test import (
     start_radest,
     write_sample,
 )
+from web.system_time import make_system_time_router
 from demo_scripte.fahrzeugprofile import (
     can_signals,
     profile_for_vehicle,
@@ -621,6 +622,10 @@ class AebWebRunner:
 
 runner = AebWebRunner()
 app = FastAPI(title="AEB-Pruefstand Live")
+app.include_router(make_system_time_router(
+    runner.lock,
+    lambda: runner.busy is not None or runner._running()
+))
 
 
 @app.on_event("shutdown")
@@ -825,7 +830,7 @@ function base(canvas,leftLabel,rightLabel){const {c,w,h}=prepare(canvas);c.clear
 function line(ctx,values,color,xmin,xmax,ymin,ymax,right=false){const {c,w,h,p}=ctx;c.strokeStyle=color;c.lineWidth=2;c.beginPath();let open=false;values.forEach((v,i)=>{if(!Number.isFinite(v)){open=false;return}const x=p.l+(w-p.l-p.r)*((rows[i].elapsed_s-xmin)/(xmax-xmin||1));const y=p.t+(h-p.t-p.b)*(1-(v-ymin)/(ymax-ymin||1));if(!open){c.moveTo(x,y);open=true}else c.lineTo(x,y)});c.stroke()}
 function labels(ctx,min,max,right=false){const {c,w,h,p}=ctx;c.fillStyle='#607681';c.font='10px Arial';c.textAlign=right?'left':'right';for(let i=0;i<=4;i++){const val=max-(max-min)*i/4;const x=right?w-p.r+5:p.l-5;const y=p.t+(h-p.t-p.b)*i/4+3;c.fillText(val.toFixed(1),x,y)}c.textAlign='left'}
 function drawAll(){if(!rows.length){prepare($('distanceChart')).c.clearRect(0,0,$('distanceChart').width,$('distanceChart').height);prepare($('reactionChart')).c.clearRect(0,0,$('reactionChart').width,$('reactionChart').height);return}const xmin=Number(rows[0].elapsed_s),xmax=Number(rows.at(-1).elapsed_s)||1;let a=base($('distanceChart'),'Distanz [m]');const target=rows.map(r=>Number(r.radest_target_distance_m)),radar=rows.map(r=>r.radar_distance==null?NaN:Number(r.radar_distance));const db=bounds([...target,...radar],[0,50]);labels(a,...db);line(a,target,'#008143',xmin,xmax,...db);line(a,radar,'#d58a00',xmin,xmax,...db);let b=base($('reactionChart'),'km/h · bar');const speed=rows.map(r=>r.vehicle_speed==null?NaN:Number(r.vehicle_speed)),brake=rows.map(r=>r.brake_pressure==null?NaN:Number(r.brake_pressure));const lb=bounds([...speed,...brake],[0,10]);labels(b,...lb);line(b,speed,'#1976d2',xmin,xmax,...lb);line(b,brake,'#d24632',xmin,xmax,...lb)}
-async function init(){scenarioFields();try{const r=await fetch('/api/config').then(x=>x.json());$('vehicle').innerHTML=r.vehicles.map(v=>`<option value="${v.id}">${escapeHtml(v.name)} · ID ${v.id}</option>`).join('');$('channel').value=r.defaults.can_channel;setState(await fetch('/api/status').then(x=>x.json()))}catch(e){$('message').textContent=e.message}connectWs();timer();window.addEventListener('resize',drawAll)}init();
+async function init(){scenarioFields();fetch('/api/system-time',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({unix_ms:Date.now()})}).catch(()=>{});try{const r=await fetch('/api/config').then(x=>x.json());$('vehicle').innerHTML=r.vehicles.map(v=>`<option value="${v.id}">${escapeHtml(v.name)} · ID ${v.id}</option>`).join('');$('channel').value=r.defaults.can_channel;setState(await fetch('/api/status').then(x=>x.json()))}catch(e){$('message').textContent=e.message}connectWs();timer();window.addEventListener('resize',drawAll)}init();
 </script></body></html>'''
 
 
