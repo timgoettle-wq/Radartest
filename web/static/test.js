@@ -252,9 +252,17 @@ async function loadVehicleProfile() {
         renderVehicleProfile(data);
         renderPrecheckHistory(data.last_precheck);
     } catch (error) {
+        if ($("vehicle").value !== vehicleId) return;
+        // Keine Werte eines zuvor gewählten Fahrzeugs stehen lassen.
+        uiState.vehicleOverview = null;
+        $("profileName").textContent = selectedVehicleName();
+        $("profileMeta").textContent = "–";
+        $("profileEcus").replaceChildren();
         $("profileHistory").replaceChildren(
             createTextElement("p", "Fahrzeugdaten konnten nicht geladen werden: " + error.message, "profile-empty")
         );
+        renderPrecheckHistory(null);
+        $("precheckLastInfo").textContent = "Vergleichswerte konnten nicht geladen werden.";
     }
 }
 
@@ -945,6 +953,7 @@ function resetWorkflow() {
     setBusy($("connectButton"), false, "", "Prüfung starten");
     updateHeader();
     showStep(1);
+    loadVehicleProfile();
 }
 
 async function restoreStatus() {

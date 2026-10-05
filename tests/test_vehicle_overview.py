@@ -80,6 +80,15 @@ class VehicleOverviewTests(unittest.TestCase):
         self.assertEqual(data["last_precheck"]["run_id"], "old")
         self.assertEqual(data["last_precheck"]["power"], "-20.0")
 
+    def test_runs_are_sorted_by_instant_not_text(self):
+        # 02:15+01:00 liegt nach 02:30+02:00 (Zeitumstellung).
+        self.write_run("summer", "2026-10-25T02:30:00+02:00", {"skipped": True})
+        self.write_run("winter", "2026-10-25T02:15:00+01:00", {"skipped": True})
+
+        data = self.client.get("/api/vehicles/1/overview").json()
+
+        self.assertEqual(data["last_run"]["run_id"], "winter")
+
     def test_unknown_vehicle_returns_404(self):
         response = self.client.get("/api/vehicles/99/overview")
 

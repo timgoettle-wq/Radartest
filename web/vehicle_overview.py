@@ -7,6 +7,7 @@ einer laufenden Messung nicht blockiert.
 
 import json
 from contextlib import closing
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
 
@@ -46,6 +47,20 @@ def _ecus(connection, vehicle_id):
     ]
 
 
+def _start_instant(run):
+    # Zeitstempel mit unterschiedlichem UTC-Offset (Sommer-/Winterzeit)
+    # nicht als Text, sondern als Zeitpunkt vergleichen.
+    try:
+        instant = datetime.fromisoformat(run.get("start_time") or "")
+    except (TypeError, ValueError):
+        return datetime.min.replace(tzinfo=timezone.utc)
+
+    if instant.tzinfo is None:
+        instant = instant.astimezone()
+
+    return instant
+
+
 def _runs_for_vehicle(vehicle_id):
     runs = []
 
@@ -61,7 +76,7 @@ def _runs_for_vehicle(vehicle_id):
         if str(data.get("vehicle_id")) == str(vehicle_id):
             runs.append(data)
 
-    runs.sort(key=lambda item: item.get("start_time") or "", reverse=True)
+    runs.sort(key=_start_instant, reverse=True)
     return runs
 
 
