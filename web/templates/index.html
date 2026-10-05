@@ -52,6 +52,8 @@
             <div class="screen-heading">
                 <div><p class="eyebrow">Schritt 1</p><h1>Fahrzeug auswählen</h1><p>Fahrzeugdiagnose und RadEsT verbinden und einen neuen TestRun starten.</p></div>
             </div>
+            <div class="vehicle-layout">
+            <div class="vehicle-main">
             <div class="selection-panel">
                 <label for="vehicle">Fahrzeug</label>
                 <select id="vehicle">__VEHICLE_OPTIONS__</select>
@@ -65,6 +67,18 @@
                     <div id="checkSignals" class="check-row"><i></i><span id="signals">Messsignale werden geprüft</span></div>
                 </div>
                 <div class="screen-actions"><span></span><button id="toQuickCheckButton" class="primary" type="button">Weiter zum Quick Check</button></div>
+            </div>
+            </div>
+            <aside class="vehicle-profile" aria-live="polite">
+                <p class="eyebrow">Fahrzeugsteckbrief</p>
+                <h2 id="profileName">–</h2>
+                <p id="profileMeta" class="profile-meta">–</p>
+                <div id="profileEcus" class="profile-ecus"></div>
+                <div class="profile-history">
+                    <h3>Bisherige Prüfungen</h3>
+                    <div id="profileHistory" class="profile-facts"><p class="profile-empty">Wird geladen …</p></div>
+                </div>
+            </aside>
             </div>
         </section>
 
@@ -93,11 +107,12 @@
                 <button id="precheckButton" class="primary large-action" type="button">Precheck starten</button>
                 <button id="skipPrecheckButton" class="secondary" type="button">Precheck überspringen</button>
             </div>
-            <div id="precheckProgress" class="precheck-progress" aria-live="polite" hidden>
-                <div data-precheck-phase="polarization"><span>1</span><strong>Polarisation</strong></div>
-                <div data-precheck-phase="frequency"><span>2</span><strong>Frequenzerkennung</strong></div>
-                <div data-precheck-phase="power"><span>3</span><strong>Leistungsmessung</strong></div>
+            <div id="precheckProgress" class="precheck-progress" aria-live="polite">
+                <div data-precheck-phase="polarization"><span>1</span><p><strong>Polarisation</strong><small>Ausrichtung der Radarwelle, die der RadEsT empfängt</small><em data-last-value="polarization"></em></p></div>
+                <div data-precheck-phase="frequency"><span>2</span><p><strong>Frequenzerkennung</strong><small>Sendefrequenzbereich des Fahrzeugradars</small><em data-last-value="frequency_range"></em></p></div>
+                <div data-precheck-phase="power"><span>3</span><p><strong>Leistungsmessung</strong><small>Empfangsleistung am RadEsT</small><em data-last-value="power"></em></p></div>
             </div>
+            <p id="precheckLastInfo" class="precheck-last-info"></p>
             <div id="precheckResult" class="result-panel" hidden>
                 <div id="precheckSummary" class="result-banner"></div>
                 <div class="metric-grid compact">

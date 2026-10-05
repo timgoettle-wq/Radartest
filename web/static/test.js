@@ -20,7 +20,8 @@ const uiState = {
     samples: [],
     logFile: null,
     measurementStartedAt: null,
-    lastConfiguration: null
+    lastConfiguration: null,
+    vehicleOverview: null
 };
 
 const $ = id => document.getElementById(id);
@@ -162,6 +163,98 @@ async function connectSystem() {
     } catch (error) {
         setBusy($("connectButton"), false, "", "Prüfung starten");
         showError(error.message);
+    }
+}
+
+function hexId(value) {
+    const number = Number(value);
+    return value === null || value === undefined || value === "" || !Number.isFinite(number)
+        ? "–"
+        : "0x" + number.toString(16).toUpperCase();
+}
+
+function formatDateTime(value) {
+    const date = value ? new Date(value) : null;
+    return date && !Number.isNaN(date.getTime())
+        ? date.toLocaleString("de-DE", {dateStyle: "medium", timeStyle: "short"})
+        : "–";
+}
+
+function profileFact(label, value) {
+    const element = document.createElement("div");
+    element.append(createTextElement("span", label), createTextElement("strong", String(value)));
+    return element;
+}
+
+function renderVehicleProfile(data) {
+    const vehicle = data.vehicle || {};
+    $("profileName").textContent = [vehicle.manufacturer, vehicle.model, vehicle.generation]
+        .filter(Boolean).join(" ") || selectedVehicleName();
+    const years = vehicle.year_from
+        ? "Baujahr " + vehicle.year_from + (vehicle.year_to ? "–" + vehicle.year_to : " bis heute")
+        : "";
+    $("profileMeta").textContent = [years, vehicle.description].filter(Boolean).join(" · ") || "Keine weiteren Angaben";
+
+    const ecus = $("profileEcus");
+    ecus.replaceChildren();
+    if (!data.ecus?.length) {
+        ecus.append(createTextElement("p", "Kein Steuergerät in der Datenpflege hinterlegt.", "profile-empty"));
+    }
+    for (const ecu of data.ecus || []) {
+        const card = document.createElement("div");
+        card.className = "profile-ecu";
+        card.append(
+            createTextElement("strong", ecu.name || "Steuergerät"),
+            createTextElement("span", [ecu.interface, ecu.channel].filter(Boolean).join(" · ")
+                + " · " + hexId(ecu.request_id) + " → " + hexId(ecu.response_id)),
+            createTextElement("span", ecu.identification_count + " Identifikationsmerkmale · "
+                + ecu.parameter_count + " Messparameter")
+        );
+        ecus.append(card);
+    }
+
+    const history = $("profileHistory");
+    history.replaceChildren();
+    const lastRun = data.last_run;
+    if (!lastRun) {
+        history.append(createTextElement("p", "Mit diesem Fahrzeug wurde noch kein TestRun durchgeführt.", "profile-empty"));
+        return;
+    }
+    history.append(
+        profileFact("TestRuns gesamt", data.run_count),
+        profileFact("Letzter TestRun", formatDateTime(lastRun.start_time)),
+        profileFact("Messungen darin", lastRun.test_count)
+    );
+    const link = document.createElement("a");
+    link.href = "/results?run=" + encodeURIComponent(lastRun.run_id);
+    link.textContent = "Letzten TestRun im Archiv öffnen";
+    history.append(link);
+}
+
+function renderPrecheckHistory(lastPrecheck) {
+    const formatters = {polarization: formatPolarization, frequency_range: formatFrequency, power: formatPower};
+    document.querySelectorAll("[data-last-value]").forEach(element => {
+        const key = element.dataset.lastValue;
+        element.textContent = lastPrecheck ? "Zuletzt: " + formatters[key](lastPrecheck[key]) : "";
+    });
+    $("precheckLastInfo").textContent = lastPrecheck
+        ? "Vergleichswerte aus dem letzten Precheck dieses Fahrzeugs vom " + formatDateTime(lastPrecheck.start_time) + "."
+        : "Für dieses Fahrzeug gibt es noch keinen gespeicherten Precheck zum Vergleich.";
+}
+
+async function loadVehicleProfile() {
+    const vehicleId = $("vehicle").value;
+    if (!vehicleId) return;
+    try {
+        const data = await apiRequest("/api/vehicles/" + encodeURIComponent(vehicleId) + "/overview");
+        if ($("vehicle").value !== vehicleId) return;
+        uiState.vehicleOverview = data;
+        renderVehicleProfile(data);
+        renderPrecheckHistory(data.last_precheck);
+    } catch (error) {
+        $("profileHistory").replaceChildren(
+            createTextElement("p", "Fahrzeugdaten konnten nicht geladen werden: " + error.message, "profile-empty")
+        );
     }
 }
 
@@ -375,7 +468,6 @@ async function runPrecheck() {
 
 async function skipPrecheck() {
     clearError();
-    $("precheckProgress").hidden = true;
     setBusy($("skipPrecheckButton"), true, "Wird dokumentiert …", "Precheck überspringen");
     try {
         const data = await apiRequest("/api/precheck/skip", {method: "POST"});
@@ -844,7 +936,7 @@ function resetWorkflow() {
     $("connectionResult").hidden = true;
     $("quickCheckResult").hidden = true;
     $("precheckResult").hidden = true;
-    $("precheckProgress").hidden = true;
+    updatePrecheckProgress();
     invalidateStaticRcs();
     invalidateDynamicRcs();
     $("toQuickCheckButton").disabled = true;
@@ -885,6 +977,9 @@ async function restoreStatus() {
             $("precheckButton").textContent = status.precheck.skipped
                 ? "Precheck nachholen"
                 : "Precheck erneut starten";
+            if (!status.precheck.skipped) {
+                updatePrecheckProgress(null, ["polarization", "frequency", "power"]);
+            }
             $("skipPrecheckButton").disabled = true;
             $("toTestsButton").disabled = false;
         }
@@ -992,5 +1087,7 @@ window.addEventListener("resize", () => {
     if (!$("screenResult").hidden) drawChart("resultChart");
 });
 
+$("vehicle").addEventListener("change", loadVehicleProfile);
+
 updateHeader();
-restoreStatus();
+restoreStatus().then(loadVehicleProfile);
