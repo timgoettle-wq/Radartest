@@ -37,12 +37,8 @@ class FakeRadest:
     def scenario_get_velocity(self):
         return 10.0
 
-    def scenario_get_rcs_limits(self):
-        return "V,30.00,-10.00,40.00"
-
     def scenario_set_rcs(self, rcs):
         self.calls.append(("rcs", rcs))
-        return f"setRCS = {rcs:.2f}, txValue = 10.50, attSet = 2.75"
 
 
 class FakeController:
@@ -60,57 +56,50 @@ def scenario(round_trip):
 
 class AebRoundTripTest(unittest.TestCase):
 
-    def test_return_leg_swaps_distances_and_sets_rcs_again(self):
+    def test_return_leg_swaps_distances_without_new_rcs(self):
         controller = FakeController()
-        leg = prepare_return_leg(controller, scenario(True)["actual"], 10.0)
+        leg = prepare_return_leg(controller, scenario(True)["actual"])
 
         self.assertEqual(leg["start_distance_m"], 5.0)
         self.assertEqual(leg["end_distance_m"], 40.0)
-        self.assertEqual(leg["rcs_radest_setting"]["values"]["attSet"], 2.75)
-        self.assertIn(("rcs", 10.0), controller.radest.calls)
+        self.assertNotIn("rcs", [call[0] for call in controller.radest.calls])
         self.assertEqual(expected_dynamic_distance(leg, 0.0), 5.0)
         self.assertEqual(expected_dynamic_distance(leg, dynamic_movement_duration(leg)), 40.0)
 
-    def test_return_leg_rejects_rcs_outside_new_limits(self):
-        with self.assertRaises(ValueError):
-            prepare_return_leg(FakeController(), scenario(True)["actual"], 50.0)
-
-    def test_round_trip_triggers_twice_after_start_return(self):
+    def test_round_trip_triggers_return_directly(self):
         controller = FakeController()
-        runner = RadestScenarioRunner(controller, scenario(True), 10.0)
+        runner = RadestScenarioRunner(controller, scenario(True))
         runner.start()
-
-        self.assertTrue(runner.return_prepared.wait(2.0))
-        triggers = [call for call in controller.radest.calls if call[0] == "trigger"]
-        self.assertEqual(triggers, [("trigger", 40.0, 5.0)])
-
-        runner.start_return()
         runner.join(2.0)
+
         self.assertFalse(runner.is_alive())
         self.assertIsNone(runner.error)
+        self.assertTrue(runner.return_started.is_set())
+        self.assertEqual(runner.wait_for_return()["end_distance_m"], 40.0)
         triggers = [call for call in controller.radest.calls if call[0] == "trigger"]
         self.assertEqual(triggers, [("trigger", 40.0, 5.0), ("trigger", 5.0, 40.0)])
 
     def test_single_direction_triggers_once(self):
         controller = FakeController()
-        runner = RadestScenarioRunner(controller, scenario(False), 10.0)
+        runner = RadestScenarioRunner(controller, scenario(False))
         runner.start()
         runner.join(2.0)
 
         self.assertFalse(runner.is_alive())
         self.assertEqual([call[0] for call in controller.radest.calls], ["trigger"])
 
-    def test_stop_before_return_skips_second_trigger(self):
+    def test_stop_during_outbound_skips_return(self):
         controller = FakeController()
         stop_event = threading.Event()
-        runner = RadestScenarioRunner(controller, scenario(True), 10.0, stop_event)
-        runner.start()
-        self.assertTrue(runner.return_prepared.wait(2.0))
         stop_event.set()
+        runner = RadestScenarioRunner(controller, scenario(True), stop_event)
+        runner.start()
         runner.join(2.0)
 
         self.assertFalse(runner.is_alive())
-        self.assertEqual([call for call in controller.radest.calls if call[0] == "trigger"], [("trigger", 40.0, 5.0)])
+        self.assertEqual([call[0] for call in controller.radest.calls], ["trigger"])
+        with self.assertRaises(RuntimeError):
+            runner.wait_for_return()
 
 
 if __name__ == "__main__":

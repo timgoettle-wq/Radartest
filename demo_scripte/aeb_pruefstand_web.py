@@ -567,9 +567,7 @@ class AebWebRunner:
 
                     final_distance = actual["end_distance_m"]
                     if not self.stop_event.is_set():
-                        scenario_thread = RadestScenarioRunner(
-                            controller, scenario, radest_result["rcs_dbsm"], self.stop_event
-                        )
+                        scenario_thread = RadestScenarioRunner(controller, scenario, self.stop_event)
                         scenario_thread.start()
                         sample(
                             dynamic_movement_duration(actual), "moving",
@@ -577,18 +575,16 @@ class AebWebRunner:
                         )
 
                     if scenario["round_trip"] and not self.stop_event.is_set():
-                        sample(scenario["post_hold_s"], "end_hold", lambda _elapsed: actual["end_distance_m"])
-
-                        # Falls der RadEsT den Hinweg noch nicht beendet hat,
-                        # an der Enddistanz weiter aufzeichnen.
+                        # Bis der RadEsT den Hinweg beendet und den Rueckweg
+                        # gestartet hat, an der Enddistanz weiter aufzeichnen.
                         waited = time.perf_counter()
-                        while not scenario_thread.return_prepared.is_set() and not self.stop_event.is_set():
+                        while not scenario_thread.return_started.is_set() and not self.stop_event.is_set():
                             if time.perf_counter() - waited > RETURN_PREPARE_TIMEOUT_S:
                                 raise RuntimeError("RadEsT hat den Hinweg nicht rechtzeitig beendet.")
-                            sample(0.1, "end_hold", lambda _elapsed: actual["end_distance_m"])
+                            sample(0.05, "turn", lambda _elapsed: actual["end_distance_m"])
 
                         if not self.stop_event.is_set():
-                            return_leg = scenario_thread.start_return()
+                            return_leg = scenario_thread.wait_for_return()
                             actual["return_leg"] = return_leg
                             config_file.write_text(
                                 json.dumps(config_data, indent=2, ensure_ascii=False, default=str),
@@ -790,7 +786,7 @@ PAGE = r'''<!doctype html>
       <div class="field dynamic"><label>Relativgeschwindigkeit [km/h]</label><input class="scenario" id="velocity" type="number" min="0.1" step="0.1" value="10"></div>
       <div class="field dynamic"><label>Haltezeit vorher [s]</label><input class="scenario" id="preHold" type="number" min="0" step="0.1" value="2"></div>
       <div class="field dynamic"><label>Haltezeit nachher [s]</label><input class="scenario" id="postHold" type="number" min="0" step="0.1" value="3"></div>
-      <div class="field dynamic"><label>Ablauf</label><label class="switch" title="Start → Ende → Start mit derselben Geschwindigkeit. Die Haltezeit nachher gilt an der Enddistanz und am Schluss."><input class="scenario" id="roundTrip" type="checkbox">Hin und zurück</label></div>
+      <div class="field dynamic"><label>Ablauf</label><label class="switch" title="Start → Ende → Start mit derselben Geschwindigkeit, an der Enddistanz ohne Haltezeit."><input class="scenario" id="roundTrip" type="checkbox">Hin und zurück</label></div>
       <div class="field dynamic span2"><label>RCS-Verhalten im Szenario</label><select class="scenario" id="rcsMode"><option value="0" selected>Konstante RCS</option><option value="1">Variable RCS / konstante Ausgangsleistung</option></select></div>
       <div class="field constant hidden"><label>Zielabstand [m]</label><input class="scenario" id="distance" type="number" min="0.1" step="0.1" value="20"></div>
       <div class="field constant hidden"><label>Messdauer [s]</label><input id="duration" type="number" min="0.1" step="0.1" value="15"></div>
