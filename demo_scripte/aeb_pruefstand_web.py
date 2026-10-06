@@ -44,7 +44,9 @@ from demo_scripte.aeb_pruefstand_test import (
     RADEST_PORT,
     SAMPLE_INTERVAL_S,
     DatabaseRadarMonitor,
+    RETURN_PREPARE_TIMEOUT_S,
     PassiveCanMonitor,
+    RadestScenarioRunner,
     StandaloneUdsMonitor,
     create_diagram,
     dynamic_movement_duration,
@@ -86,6 +88,8 @@ class TestConfig(BaseModel):
     pre_hold_s: float = 2.0
     post_hold_s: float = 3.0
     rcs_constant_state: int = 0
+    # Start -> Ende -> Start mit derselben Geschwindigkeit.
+    round_trip: bool = False
     rcs_dbsm: Optional[float] = None
 
 
@@ -134,13 +138,18 @@ def make_scenario(config):
         "pre_hold_s": config.pre_hold_s,
         "post_hold_s": config.post_hold_s,
         "rcs_constant_state": config.rcs_constant_state,
+        "round_trip": config.round_trip,
     }
 
 
 def scenario_key(scenario):
-    # Die Messdauer beeinflusst die RadEsT-Vorbereitung nicht.
+    # Messdauer und Rueckweg beeinflussen die RadEsT-Vorbereitung nicht.
     return json.dumps(
-        {key: value for key, value in scenario.items() if key not in {"duration_s", "actual"}},
+        {
+            key: value
+            for key, value in scenario.items()
+            if key not in {"duration_s", "actual", "round_trip"}
+        },
         sort_keys=True,
     )
 
@@ -501,7 +510,7 @@ class AebWebRunner:
         diagnostic_monitor = None
         radar_monitor = None
         scenario_thread = None
-        scenario_error = []
+        timeout_error = None
         rows = []
         origin = time.perf_counter()
 
@@ -551,39 +560,61 @@ class AebWebRunner:
                         radest_values,
                     )
 
-                    if not self.stop_event.is_set():
-                        def trigger_scenario():
-                            try:
-                                controller.radest.scenario_trigger()
-                            except Exception as error:
-                                scenario_error.append(error)
-
-                        scenario_thread = threading.Thread(
-                            target=trigger_scenario, name="RadestScenario", daemon=True
-                        )
-                        scenario_thread.start()
+                    def sample(duration_s, phase, distance_function):
                         self._sample_phase(
                             writer, file, rows, monitor, diagnostic_monitor, radar_monitor, origin,
+                            duration_s, phase, distance_function, actual["velocity_kmh"], radest_values,
+                        )
+
+                    final_distance = actual["end_distance_m"]
+                    if not self.stop_event.is_set():
+                        scenario_thread = RadestScenarioRunner(controller, scenario, self.stop_event)
+                        scenario_thread.start()
+                        sample(
                             dynamic_movement_duration(actual), "moving",
                             lambda elapsed: expected_dynamic_distance(actual, elapsed),
-                            actual["velocity_kmh"], radest_values,
                         )
 
+                    if scenario["round_trip"] and not self.stop_event.is_set():
+                        # Bis der RadEsT den Hinweg beendet und den Rueckweg
+                        # gestartet hat, an der Enddistanz weiter aufzeichnen.
+                        waited = time.perf_counter()
+                        while not scenario_thread.return_started.is_set() and not self.stop_event.is_set():
+                            if time.perf_counter() - waited > RETURN_PREPARE_TIMEOUT_S:
+                                # Nicht sofort abbrechen: Das Szenario belegt noch den
+                                # RadEsT-Socket. Rueckweg verhindern, unten auf das
+                                # Szenarioende warten und dann den Fehler melden.
+                                timeout_error = "RadEsT hat den Hinweg nicht rechtzeitig beendet."
+                                self.stop_event.set()
+                                break
+                            sample(0.05, "turn", lambda _elapsed: actual["end_distance_m"])
+
+                        if not self.stop_event.is_set():
+                            return_leg = scenario_thread.wait_for_return()
+                            actual["return_leg"] = return_leg
+                            config_file.write_text(
+                                json.dumps(config_data, indent=2, ensure_ascii=False, default=str),
+                                encoding="utf-8",
+                            )
+                            self._set_state("laeuft", "Rueckweg laeuft.")
+                            sample(
+                                dynamic_movement_duration(return_leg), "moving_back",
+                                lambda elapsed: expected_dynamic_distance(return_leg, elapsed),
+                            )
+                            final_distance = return_leg["end_distance_m"]
+
                     if not self.stop_event.is_set():
-                        self._sample_phase(
-                            writer, file, rows, monitor, diagnostic_monitor, radar_monitor, origin,
-                            scenario["post_hold_s"], "post_hold",
-                            lambda _elapsed: actual["end_distance_m"], actual["velocity_kmh"],
-                            radest_values,
-                        )
+                        sample(scenario["post_hold_s"], "post_hold", lambda _elapsed: final_distance)
 
             if scenario_thread is not None and scenario_thread.is_alive():
                 self._set_state("stoppt", "Aufzeichnung beendet. Das RadEsT-Szenario laeuft noch aus.")
                 while scenario_thread.is_alive():
                     scenario_thread.join(timeout=0.25)
 
-            if scenario_error:
-                raise RuntimeError(f"RadEsT-Szenariofehler: {scenario_error[0]}")
+            if timeout_error is not None:
+                raise RuntimeError(timeout_error)
+            if scenario_thread is not None and scenario_thread.error is not None:
+                raise RuntimeError(f"RadEsT-Szenariofehler: {scenario_thread.error}")
             if monitor.error is not None:
                 raise RuntimeError(f"CAN-Aufzeichnung fehlgeschlagen: {monitor.error}")
             if diagnostic_monitor is not None and diagnostic_monitor.error is not None:
@@ -737,6 +768,7 @@ PAGE = r'''<!doctype html>
     .values{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;padding:14px}.value{background:var(--pale);border-bottom:1px solid var(--line);padding:12px}.value .name{font-size:11px;color:var(--muted);text-transform:uppercase}.value .number{font-size:23px;font-weight:800;margin-top:4px;font-variant-numeric:tabular-nums}.value.brake.active{background:#fff0dc;border-color:#e29a29}.value.brake.active .number{color:#a04f00}
     .charts{display:grid;grid-template-columns:1fr 1fr;gap:16px}.chart{background:#fff;border:1px solid var(--line);border-radius:8px;padding:14px}.chart h2{font-size:17px;margin:0 0 8px}.chart canvas{width:100%;height:290px;display:block}.legend{display:flex;gap:16px;font-size:12px;color:var(--muted)}.dot{display:inline-block;width:10px;height:3px;margin-right:5px;vertical-align:middle}
     .output{padding:10px 18px;color:var(--muted);font-size:13px;word-break:break-all}.switch{display:flex;align-items:center;gap:8px;padding-top:18px}.switch input{width:auto}
+    .field .switch{padding-top:0;margin:0;font:600 15px Arial;letter-spacing:0;text-transform:none;color:var(--dark);cursor:pointer}
     @media(max-width:1050px){.form{grid-template-columns:repeat(3,1fr)}.values{grid-template-columns:repeat(3,1fr)}.charts{grid-template-columns:1fr}}
     @media(max-width:620px){main{padding:10px}.head{display:block}.safety{margin-top:10px}.form{grid-template-columns:1fr 1fr}.span2{grid-column:span 2}.values{grid-template-columns:1fr 1fr}.statusbar{grid-template-columns:1fr}.actions{flex-wrap:wrap}}
   </style>
@@ -762,6 +794,7 @@ PAGE = r'''<!doctype html>
       <div class="field dynamic"><label>Relativgeschwindigkeit [km/h]</label><input class="scenario" id="velocity" type="number" min="0.1" step="0.1" value="10"></div>
       <div class="field dynamic"><label>Haltezeit vorher [s]</label><input class="scenario" id="preHold" type="number" min="0" step="0.1" value="2"></div>
       <div class="field dynamic"><label>Haltezeit nachher [s]</label><input class="scenario" id="postHold" type="number" min="0" step="0.1" value="3"></div>
+      <div class="field dynamic"><label>Ablauf</label><label class="switch" title="Start → Ende → Start mit derselben Geschwindigkeit, an der Enddistanz ohne Haltezeit."><input class="scenario" id="roundTrip" type="checkbox">Hin und zurück</label></div>
       <div class="field dynamic span2"><label>RCS-Verhalten im Szenario</label><select class="scenario" id="rcsMode"><option value="0" selected>Konstante RCS</option><option value="1">Variable RCS / konstante Ausgangsleistung</option></select></div>
       <div class="field constant hidden"><label>Zielabstand [m]</label><input class="scenario" id="distance" type="number" min="0.1" step="0.1" value="20"></div>
       <div class="field constant hidden"><label>Messdauer [s]</label><input id="duration" type="number" min="0.1" step="0.1" value="15"></div>
@@ -795,7 +828,7 @@ PAGE = r'''<!doctype html>
 <script>
 const $=id=>document.getElementById(id); let rows=[]; let startedAt=null; let socket=null; let runId=null;
 const num=id=>Number($(id).value.replace?.(',','.') ?? $(id).value);
-function payload(){return {scenario_type:$('type').value,distance_m:num('distance'),duration_s:num('duration'),start_distance_m:num('startDistance'),end_distance_m:num('endDistance'),velocity_kmh:num('velocity'),pre_hold_s:num('preHold'),post_hold_s:num('postHold'),rcs_constant_state:Number($('rcsMode').value),rcs_dbsm:$('rcs').value===''?null:num('rcs')}}
+function payload(){return {scenario_type:$('type').value,distance_m:num('distance'),duration_s:num('duration'),start_distance_m:num('startDistance'),end_distance_m:num('endDistance'),velocity_kmh:num('velocity'),pre_hold_s:num('preHold'),post_hold_s:num('postHold'),rcs_constant_state:Number($('rcsMode').value),round_trip:$('roundTrip').checked,rcs_dbsm:$('rcs').value===''?null:num('rcs')}}
 function scenarioFields(){const constant=$('type').value==='constant';document.querySelectorAll('.dynamic').forEach(e=>e.classList.toggle('hidden',constant));document.querySelectorAll('.constant').forEach(e=>e.classList.toggle('hidden',!constant))}
 function fmt(value,unit,digits=2){return value===null||value===undefined||!Number.isFinite(Number(value))?'–':`${Number(value).toFixed(digits)} ${unit}`}
 function setLive(r){if(!r)return;$('target').textContent=fmt(r.radest_target_distance_m,'m');$('radar').textContent=fmt(r.radar_distance,'m');$('relative').textContent=fmt(r.radar_relative_speed,'km/h');$('speed').textContent=fmt(r.vehicle_speed,'km/h');$('brake').textContent=r.brake_pressure==null&&r.brake_pedal_pressed!=null?(Number(r.brake_pedal_pressed)>=1?'betätigt':'frei'):fmt(r.brake_pressure,'bar');$('accel').textContent=fmt(r.longitudinal_acceleration,'m/s²');$('steering').textContent=fmt(r.steering_angle,'°');$('yaw').textContent=fmt(r.yaw_rate,'°/s')}
