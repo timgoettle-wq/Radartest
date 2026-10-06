@@ -2,6 +2,12 @@
 
 let measurementSocket = null;
 let socketClosingIntentionally = false;
+// Bricht die Live-Verbindung ab (z. B. WLAN-Aussetzer), läuft die Messung
+// auf dem Pi weiter. Die Seite verbindet sich dann selbst neu.
+let socketReconnectTimer = null;
+let socketReconnectAttempts = 0;
+const SOCKET_RECONNECT_DELAY_MS = 1000;
+const SOCKET_RECONNECT_MAX_ATTEMPTS = 30;
 
 const uiState = {
     connected: false,
@@ -584,17 +590,31 @@ async function startDynamicMeasurement() {
     }
 }
 
-function startLiveMeasurement() {
+function startLiveMeasurement(isReconnect = false) {
     stopLiveMeasurement(true);
+    // Stoppen geht per REST und bleibt auch während des Neuverbindens möglich.
+    if (isReconnect) $("stopButton").disabled = false;
+    else socketReconnectAttempts = 0;
     socketClosingIntentionally = false;
     const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-    measurementSocket = new WebSocket(protocol + "//" + location.host + "/ws/static");
-    measurementSocket.onopen = () => {
+    const socket = new WebSocket(protocol + "//" + location.host + "/ws/static");
+    measurementSocket = socket;
+    // Ereignisse einer bereits ersetzten Verbindung ignorieren.
+    const isCurrent = () => measurementSocket === socket;
+    socket.onopen = () => {
+        if (!isCurrent()) return;
         $("stopButton").disabled = false;
+        if (socketReconnectAttempts > 0) clearError();
+        socketReconnectAttempts = 0;
     };
-    measurementSocket.onmessage = event => {
+    socket.onmessage = event => {
+        if (!isCurrent()) return;
         const message = JSON.parse(event.data);
-        if (message.type === "measurement") updateMeasurement(message.data);
+        // Nach einem Neuverbinden kommt der letzte Messpunkt erneut.
+        if (message.type === "measurement"
+            && message.data?.sequence !== uiState.lastMeasurement?.sequence) {
+            updateMeasurement(message.data);
+        }
         if (message.type === "complete") {
             stopLiveMeasurement(true);
             finishMeasurement("finished");
@@ -605,12 +625,28 @@ function startLiveMeasurement() {
             finishMeasurement("failed", message.message);
         }
     };
-    measurementSocket.onerror = () => {
-        if (!socketClosingIntentionally) showError("WebSocket-Verbindung fehlgeschlagen.");
+    socket.onerror = () => {
+        // Die Fehlermeldung kommt aus onclose, das danach immer folgt.
     };
-    measurementSocket.onclose = () => {
+    socket.onclose = () => {
+        if (!isCurrent()) return;
         measurementSocket = null;
-        $("stopButton").disabled = true;
+        if (socketClosingIntentionally || !uiState.currentMeasurement) {
+            $("stopButton").disabled = true;
+            return;
+        }
+        if (socketReconnectAttempts >= SOCKET_RECONNECT_MAX_ATTEMPTS) {
+            showError("Live-Verbindung verloren. Die Messung läuft auf dem Pi weiter; "
+                + "bitte die Seite neu laden.");
+            return;
+        }
+        socketReconnectAttempts += 1;
+        showError("Live-Verbindung unterbrochen, verbinde neu ("
+            + socketReconnectAttempts + "/" + SOCKET_RECONNECT_MAX_ATTEMPTS + ") …");
+        socketReconnectTimer = setTimeout(() => {
+            socketReconnectTimer = null;
+            if (uiState.currentMeasurement) startLiveMeasurement(true);
+        }, SOCKET_RECONNECT_DELAY_MS);
     };
 }
 
@@ -767,6 +803,10 @@ function drawSeries(context, points, key, x, y, color) {
 
 function stopLiveMeasurement(intentional = false) {
     socketClosingIntentionally = intentional;
+    if (socketReconnectTimer) {
+        clearTimeout(socketReconnectTimer);
+        socketReconnectTimer = null;
+    }
     if (measurementSocket) {
         measurementSocket.close();
         measurementSocket = null;

@@ -706,16 +706,28 @@ async def static_measurement_websocket(
                         break
 
 
+            except WebSocketDisconnect:
+
+                # Browser ist weg (z. B. WLAN-Aussetzer). Nichts mehr
+                # senden, die Messung selbst läuft im Controller weiter.
+                raise
+
             except Exception as error:
 
-                await websocket.send_json({
+                try:
 
-                    "type":
-                        "error",
+                    await websocket.send_json({
 
-                    "message":
-                        str(error)
-                })
+                        "type":
+                            "error",
+
+                        "message":
+                            str(error)
+                    })
+
+                except Exception:
+
+                    pass
 
                 break
 
