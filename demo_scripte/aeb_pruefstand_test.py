@@ -174,6 +174,13 @@ def ask_scenario():
         "rcs_constant_state": int(
             ask_choice("RCS-Verhalten im Szenario", RCS_CONSTANT_STATES_TEXT, "0")
         ),
+        # Hin und zurueck: Start -> Ende -> Start mit derselben Geschwindigkeit.
+        # Die Haltezeit am Ende gilt dann an der Enddistanz und wieder am Schluss.
+        "round_trip": ask_choice(
+            "Ablauf",
+            {"1": "Nur Hinweg (Start -> Ende)", "2": "Hin und zurueck (Start -> Ende -> Start)"},
+            "1",
+        ) == "2",
     }
 
 
@@ -646,6 +653,92 @@ def expected_dynamic_distance(actual, movement_elapsed_s):
     return start + (end - start) * progress
 
 
+def prepare_return_leg(controller, actual, rcs_dbsm):
+    """Stellt den RadEsT fuer den Rueckweg ein: Enddistanz -> Startdistanz.
+
+    Laeuft direkt ueber controller.radest, damit test_controller.py unveraendert
+    bleibt. Geschwindigkeit und RCS-Verhalten bleiben vom Hinweg eingestellt,
+    die RCS wird nach dem Tausch der Distanzen erneut gesetzt.
+    """
+    radest = controller.radest
+    radest.scenario_distance_start(actual["end_distance_m"])
+    radest.scenario_distance_end(actual["start_distance_m"])
+    limits = TestController._parse_rcs_limits(radest.scenario_get_rcs_limits())
+    rcs_dbsm = TestController._validate_rcs_value(rcs_dbsm, limits)
+    return {
+        "start_distance_m": radest.scenario_get_distance_start(),
+        "end_distance_m": radest.scenario_get_distance_end(),
+        "velocity_kmh": float(radest.scenario_get_velocity()),
+        "rcs_limits": limits,
+        "rcs_radest_setting": TestController._parse_rcs_setting(radest.scenario_set_rcs(rcs_dbsm)),
+    }
+
+
+class RadestScenarioRunner:
+    """Fuehrt das RadEsT-Szenario im Hintergrund aus, optional mit Rueckweg.
+
+    Nach dem Hinweg wird der Rueckweg sofort vorbereitet, gestartet wird er
+    aber erst mit start_return(), also nach der Haltezeit an der Enddistanz.
+    """
+
+    def __init__(self, controller, scenario, rcs_dbsm, stop_event=None):
+        self.controller = controller
+        self.scenario = scenario
+        self.rcs_dbsm = rcs_dbsm
+        self.stop_event = stop_event or threading.Event()
+        self.return_prepared = threading.Event()
+        self.return_go = threading.Event()
+        self.return_leg = None
+        self.error = None
+        self.thread = threading.Thread(target=self._run, name="RadestScenario", daemon=True)
+
+    def start(self):
+        self.thread.start()
+
+    def is_alive(self):
+        return self.thread.is_alive()
+
+    def join(self, timeout=None):
+        self.thread.join(timeout)
+
+    def _run(self):
+        try:
+            self.controller.radest.scenario_trigger()
+            if not self.scenario.get("round_trip"):
+                return
+            self.return_leg = prepare_return_leg(self.controller, self.scenario["actual"], self.rcs_dbsm)
+            self.return_prepared.set()
+            while not self.return_go.wait(0.1):
+                if self.stop_event.is_set():
+                    return
+            self.controller.radest.scenario_trigger()
+        except Exception as error:
+            self.error = error
+        finally:
+            self.return_prepared.set()
+
+    def start_return(self):
+        """Startet den vorbereiteten Rueckweg und liefert dessen Distanzen."""
+        if self.error is not None:
+            raise RuntimeError(f"RadEsT-Szenariofehler: {self.error}")
+        if self.return_leg is None:
+            raise RuntimeError("RadEsT hat den Rueckweg nicht vorbereitet.")
+        self.return_go.set()
+        return self.return_leg
+
+
+def write_test_config(path, config_data):
+    path.write_text(
+        json.dumps(config_data, indent=2, ensure_ascii=False, default=str),
+        encoding="utf-8",
+    )
+
+
+# Laenger als das wird nach der Haltezeit an der Enddistanz nicht auf den
+# RadEsT gewartet, bevor der Rueckweg als fehlgeschlagen gilt.
+RETURN_PREPARE_TIMEOUT_S = 15.0
+
+
 RADAR_UNITS = {
     "radar_distance": "m",
     "radar_relative_speed": "km/h",
@@ -957,7 +1050,6 @@ def main():
     diagnostic_monitor = None
     radar_monitor = None
     scenario_thread = None
-    scenario_error = []
     rows = []
     origin = time.perf_counter()
 
@@ -993,20 +1085,13 @@ def main():
 
         radest_result = start_radest(controller, scenario, rcs_dbsm)
         radest_values = radest_row_values(radest_result)
-        (output_directory / "test_config.json").write_text(
-            json.dumps(
-                {
-                    "vehicle_id": vehicle_id,
-                    "scenario": scenario,
-                    "precheck": precheck,
-                    "radest": radest_result,
-                },
-                indent=2,
-                ensure_ascii=False,
-                default=str,
-            ),
-            encoding="utf-8",
-        )
+        config_data = {
+            "vehicle_id": vehicle_id,
+            "scenario": scenario,
+            "precheck": precheck,
+            "radest": radest_result,
+        }
+        write_test_config(output_directory / "test_config.json", config_data)
         print(
             f"RCS gesetzt: {radest_values['radest_rcs_dbsm']} dBsm, "
             f"txValue {radest_values['radest_tx_value']}, attSet {radest_values['radest_att_set']}, "
@@ -1085,51 +1170,69 @@ def main():
                     radest_values,
                 )
 
-                def trigger_scenario():
-                    try:
-                        controller.radest.scenario_trigger()
-                    except Exception as error:
-                        scenario_error.append(error)
-
-                scenario_thread = threading.Thread(target=trigger_scenario, name="RadestScenario", daemon=True)
+                scenario_thread = RadestScenarioRunner(controller, scenario, rcs_dbsm)
                 scenario_thread.start()
 
-                movement_duration = dynamic_movement_duration(scenario["actual"])
-                sample_for_duration(
-                    writer,
-                    rows,
-                    monitor,
-                    diagnostic_monitor,
-                    radar_monitor,
-                    origin,
-                    movement_duration,
+                def sample(duration_s, phase, distance_function):
+                    sample_for_duration(
+                        writer,
+                        rows,
+                        monitor,
+                        diagnostic_monitor,
+                        radar_monitor,
+                        origin,
+                        duration_s,
+                        phase,
+                        distance_function,
+                        scenario["actual"]["velocity_kmh"],
+                        profile,
+                        radest_values,
+                    )
+
+                sample(
+                    dynamic_movement_duration(scenario["actual"]),
                     "moving",
                     lambda elapsed: expected_dynamic_distance(scenario["actual"], elapsed),
-                    scenario["actual"]["velocity_kmh"],
-                    profile,
-                    radest_values,
                 )
 
-                sample_for_duration(
-                    writer,
-                    rows,
-                    monitor,
-                    diagnostic_monitor,
-                    radar_monitor,
-                    origin,
-                    scenario["post_hold_s"],
-                    "post_hold",
-                    lambda _elapsed: scenario["actual"]["end_distance_m"],
-                    scenario["actual"]["velocity_kmh"],
-                    profile,
-                    radest_values,
-                )
+                if scenario["round_trip"]:
+                    end_distance = scenario["actual"]["end_distance_m"]
+                    sample(scenario["post_hold_s"], "end_hold", lambda _elapsed: end_distance)
+
+                    # Falls der RadEsT den Hinweg noch nicht beendet hat,
+                    # an der Enddistanz weiter aufzeichnen.
+                    waited = time.perf_counter()
+                    while not scenario_thread.return_prepared.is_set():
+                        if time.perf_counter() - waited > RETURN_PREPARE_TIMEOUT_S:
+                            raise RuntimeError("RadEsT hat den Hinweg nicht rechtzeitig beendet.")
+                        sample(0.1, "end_hold", lambda _elapsed: end_distance)
+
+                    return_leg = scenario_thread.start_return()
+                    scenario["actual"]["return_leg"] = return_leg
+                    print(
+                        f"Rueckweg: {return_leg['start_distance_m']} m -> "
+                        f"{return_leg['end_distance_m']} m mit {return_leg['velocity_kmh']} km/h"
+                    )
+                    sample(
+                        dynamic_movement_duration(return_leg),
+                        "moving_back",
+                        lambda elapsed: expected_dynamic_distance(return_leg, elapsed),
+                    )
+                    final_distance = return_leg["end_distance_m"]
+                else:
+                    final_distance = scenario["actual"]["end_distance_m"]
+
+                sample(scenario["post_hold_s"], "post_hold", lambda _elapsed: final_distance)
 
                 scenario_thread.join(timeout=1.0)
                 if scenario_thread.is_alive():
                     print("WARNUNG: RadEsT meldet das Szenario noch nicht als beendet.")
-                if scenario_error:
-                    raise RuntimeError(f"RadEsT-Szenariofehler: {scenario_error[0]}")
+                if scenario_thread.error is not None:
+                    raise RuntimeError(f"RadEsT-Szenariofehler: {scenario_thread.error}")
+
+                if scenario["round_trip"]:
+                    # Enthaelt jetzt auch die Distanzen und RCS des Rueckwegs.
+                    write_test_config(output_directory / "test_config.json", config_data)
 
         if monitor.error is not None:
             raise RuntimeError(f"CAN-Aufzeichnung fehlgeschlagen: {monitor.error}")
