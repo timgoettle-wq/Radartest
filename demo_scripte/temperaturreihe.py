@@ -11,7 +11,7 @@ Abstaenden (Standard 5 min) einen Zyklus:
 
 Zwischen den Zyklen wird alle 30 s die Detektortemperatur protokolliert.
 Die Reihe endet, wenn sich die Temperatur ueber drei Zyklen um weniger als
-0,3 °C aendert (oder nach --max-minuten). Danach kann eine Gegenprobe
+0,3 °C aendert (oder nach --max-minuten, Standard 240 min, 0 = unbegrenzt). Danach kann eine Gegenprobe
 folgen: RadEsT per SYSTEM:SLEEP abkuehlen lassen und wieder messen.
 
 Geht die Zuendung aus, antwortet die Diagnose nicht mehr. Das Skript
@@ -73,7 +73,7 @@ TEMPERATURE_LOG_INTERVAL_S = 30.0
 STABLE_CYCLES = 3
 STABLE_DELTA_C = 0.3
 MIN_CYCLES = 4
-MAX_MINUTES = 120.0
+MAX_MINUTES = 240.0
 
 COOLDOWN_MINUTES = 30.0
 COOLDOWN_CYCLES = 2
@@ -446,7 +446,8 @@ def parse_args():
                         help="pro Zyklus zusaetzlich eine Fahrt Modus 0, attSet 4")
     parser.add_argument("--intervall-minuten", type=float,
                         default=CYCLE_INTERVAL_S / 60)
-    parser.add_argument("--max-minuten", type=float, default=MAX_MINUTES)
+    parser.add_argument("--max-minuten", type=float, default=MAX_MINUTES,
+                        help="Hoechstdauer der Aufwaermphase, 0 = unbegrenzt")
     parser.add_argument("--ohne-gegenprobe", action="store_true",
                         help="nach dem Aufwaermen nicht abkuehlen lassen")
     parser.add_argument("--abkuehl-minuten", type=float, default=COOLDOWN_MINUTES)
@@ -469,7 +470,8 @@ def print_plan(args):
               f"{DYNAMIC_PROBE_ATTSET:g}")
     print(f"  Ende Aufwaermen: Temperatur aendert sich ueber {STABLE_CYCLES} "
           f"Zyklen um < {STABLE_DELTA_C} °C (mind. {MIN_CYCLES} Zyklen, "
-          f"max. {args.max_minuten:g} min)")
+          + ("ohne Zeitlimit)" if args.max_minuten <= 0 or args.max_minuten == float("inf")
+             else f"max. {args.max_minuten:g} min)"))
     if args.ohne_gegenprobe:
         print("  Keine Gegenprobe")
     else:
@@ -480,6 +482,8 @@ def print_plan(args):
 
 def main(controller_factory=None):
     args = parse_args()
+    if args.max_minuten <= 0:
+        args.max_minuten = float("inf")
     global CYCLE_INTERVAL_S
     CYCLE_INTERVAL_S = args.intervall_minuten * 60
     name = safe_name(args.name)
