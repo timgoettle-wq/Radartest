@@ -510,6 +510,7 @@ class AebWebRunner:
         diagnostic_monitor = None
         radar_monitor = None
         scenario_thread = None
+        timeout_error = None
         rows = []
         origin = time.perf_counter()
 
@@ -580,7 +581,12 @@ class AebWebRunner:
                         waited = time.perf_counter()
                         while not scenario_thread.return_started.is_set() and not self.stop_event.is_set():
                             if time.perf_counter() - waited > RETURN_PREPARE_TIMEOUT_S:
-                                raise RuntimeError("RadEsT hat den Hinweg nicht rechtzeitig beendet.")
+                                # Nicht sofort abbrechen: Das Szenario belegt noch den
+                                # RadEsT-Socket. Rueckweg verhindern, unten auf das
+                                # Szenarioende warten und dann den Fehler melden.
+                                timeout_error = "RadEsT hat den Hinweg nicht rechtzeitig beendet."
+                                self.stop_event.set()
+                                break
                             sample(0.05, "turn", lambda _elapsed: actual["end_distance_m"])
 
                         if not self.stop_event.is_set():
@@ -605,6 +611,8 @@ class AebWebRunner:
                 while scenario_thread.is_alive():
                     scenario_thread.join(timeout=0.25)
 
+            if timeout_error is not None:
+                raise RuntimeError(timeout_error)
             if scenario_thread is not None and scenario_thread.error is not None:
                 raise RuntimeError(f"RadEsT-Szenariofehler: {scenario_thread.error}")
             if monitor.error is not None:
