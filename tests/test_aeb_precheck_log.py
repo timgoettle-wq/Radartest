@@ -16,16 +16,18 @@ class SavePrecheckTest(unittest.TestCase):
                 path,
             )
             save_precheck(1, {"skipped": False, "polarization": "8", "frequency_range": "76-81", "power": "19.5"}, path)
-            save_precheck(2, {"status": "skipped", "skipped": True}, path)
+            skipped = save_precheck(2, {"status": "skipped", "skipped": True}, path)
 
             with path.open(encoding="utf-8") as file:
                 rows = list(csv.DictReader(file, delimiter=";"))
 
         self.assertEqual(first["polarization"], "5")
         self.assertIn("time", first)
+        self.assertNotIn("status", first)
         self.assertEqual(len(rows), 3)
         self.assertEqual([row["polarization"] for row in rows], ["5", "8", ""])
         self.assertEqual(rows[2]["status"], "uebersprungen")
+        self.assertEqual(skipped["status"], "skipped")
         self.assertEqual(rows[2]["vehicle_id"], "2")
 
 

@@ -748,7 +748,9 @@ def save_precheck(vehicle_id, result, path=PRECHECK_LOG):
         if new_file:
             writer.writeheader()
         writer.writerow({key: "" if value is None else value for key, value in entry.items()})
-    return {**result, **entry}
+    # Der Status des Controllers ("completed"/"skipped") bleibt im Ergebnis
+    # erhalten; der deutsche Text steht nur in der CSV.
+    return {**result, "time": entry["time"], "vehicle_id": vehicle_id}
 
 
 def write_test_config(path, config_data):
