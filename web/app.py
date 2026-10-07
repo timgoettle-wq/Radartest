@@ -18,6 +18,7 @@ from database.database import get_vehicles
 from test_controller import TestController
 from web.results_api import router as results_router
 from web.system_time import make_system_time_router
+from web.vehicle_overview import router as vehicle_overview_router
 
 
 app = FastAPI(
@@ -38,6 +39,7 @@ app.include_router(make_database_router(
     controller_lock, lambda: controller is not None
 ))
 app.include_router(results_router)
+app.include_router(vehicle_overview_router)
 app.include_router(make_system_time_router(
     controller_lock,
     lambda: controller is not None and controller.is_measurement_running()
