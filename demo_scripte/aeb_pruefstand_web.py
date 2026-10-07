@@ -242,11 +242,15 @@ class AebWebRunner:
             self.busy = label
             self.sequence += 1
         try:
-            return action()
+            action()
         finally:
             with self.lock:
                 self.busy = None
                 self.sequence += 1
+        # Erst nach dem Freigeben den Zustand zurueckgeben. Sonst kann die
+        # Antwort mit "busy" nach dem WebSocket-Update ankommen und die
+        # Weboberflaeche sperrt alle Knoepfe, bis sich wieder etwas aendert.
+        return self.snapshot()
 
     def connect(self, config):
         if config.vehicle_id <= 0:
