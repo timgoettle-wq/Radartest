@@ -717,6 +717,42 @@ class RadestScenarioRunner:
         return self.return_leg
 
 
+# Jeder Precheck (auch uebersprungene und wiederholte) wird hier angehaengt,
+# damit kein Ergebnis verloren geht. Pro Test steht zusaetzlich die Liste der
+# Prechecks der Sitzung in test_config.json.
+PRECHECK_LOG = PROJECT_ROOT / "test_runs" / "aeb_prechecks.csv"
+PRECHECK_LOG_COLUMNS = (
+    "time",
+    "vehicle_id",
+    "status",
+    "polarization",
+    "frequency_range",
+    "power",
+)
+
+
+def save_precheck(vehicle_id, result, path=PRECHECK_LOG):
+    """Haengt einen Precheck an die Precheck-CSV an und gibt den Eintrag zurueck."""
+    entry = {
+        "time": datetime.now().isoformat(timespec="seconds"),
+        "vehicle_id": vehicle_id,
+        "status": "uebersprungen" if result.get("skipped") else "durchgefuehrt",
+        "polarization": result.get("polarization"),
+        "frequency_range": result.get("frequency_range"),
+        "power": result.get("power"),
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    new_file = not path.exists() or path.stat().st_size == 0
+    with path.open("a", newline="", encoding="utf-8") as file:
+        writer = csv.DictWriter(file, fieldnames=PRECHECK_LOG_COLUMNS, delimiter=";")
+        if new_file:
+            writer.writeheader()
+        writer.writerow({key: "" if value is None else value for key, value in entry.items()})
+    # Der Status des Controllers ("completed"/"skipped") bleibt im Ergebnis
+    # erhalten; der deutsche Text steht nur in der CSV.
+    return {**result, "time": entry["time"], "vehicle_id": vehicle_id}
+
+
 def write_test_config(path, config_data):
     path.write_text(
         json.dumps(config_data, indent=2, ensure_ascii=False, default=str),
@@ -1050,15 +1086,21 @@ def main():
         controller.connect()
 
         print("\nPrecheck")
-        if ask_choice("Auswahl", {"1": "Precheck durchfuehren", "2": "Precheck ueberspringen"}, "1") == "1":
-            precheck = controller.run_precheck()
+        prechecks = []
+        choice = ask_choice("Auswahl", {"1": "Precheck durchfuehren", "2": "Precheck ueberspringen"}, "1")
+        while choice == "1":
+            precheck = save_precheck(vehicle_id, controller.run_precheck())
+            prechecks.append(precheck)
             print(
-                f"Precheck abgeschlossen: Polarisation {precheck['polarization']}, "
+                f"Precheck {len(prechecks)} abgeschlossen: Polarisation {precheck['polarization']}, "
                 f"Frequenzbereich {precheck['frequency_range']}, Leistung {precheck['power']}"
             )
-        else:
-            precheck = controller.skip_precheck()
+            choice = ask_choice("Weiter", {"1": "Precheck wiederholen", "2": "Weiter zum Test"}, "2")
+        if not prechecks:
+            precheck = save_precheck(vehicle_id, controller.skip_precheck())
+            prechecks.append(precheck)
             print("Precheck uebersprungen.")
+        print(f"Prechecks gespeichert in {PRECHECK_LOG}")
 
         rcs_limits = prepare_radest(controller, scenario)
         print(f"RCS-Bereich: {rcs_limits_text(rcs_limits)}")
@@ -1079,6 +1121,7 @@ def main():
             "vehicle_id": vehicle_id,
             "scenario": scenario,
             "precheck": precheck,
+            "prechecks": prechecks,
             "radest": radest_result,
         }
         write_test_config(output_directory / "test_config.json", config_data)
