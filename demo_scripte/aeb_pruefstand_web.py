@@ -44,6 +44,7 @@ from demo_scripte.aeb_pruefstand_test import (
     RADEST_PORT,
     SAMPLE_INTERVAL_S,
     DatabaseRadarMonitor,
+    PRECHECK_LOG,
     RETURN_PREPARE_TIMEOUT_S,
     PassiveCanMonitor,
     RadestScenarioRunner,
@@ -55,6 +56,7 @@ from demo_scripte.aeb_pruefstand_test import (
     prepare_radest,
     radest_row_values,
     rcs_limits_text,
+    save_precheck,
     start_radest,
     write_sample,
 )
@@ -180,6 +182,8 @@ class AebWebRunner:
         self.can_channel = None
         self.radar_signals = []
         self.precheck = None
+        # Alle Prechecks dieser Verbindung; zusaetzlich in PRECHECK_LOG gespeichert.
+        self.prechecks = []
         self.rcs_limits = None
         self.prepared_key = None
         self.prepared_scenario = None
@@ -206,6 +210,8 @@ class AebWebRunner:
                     "profile": profile_summary(self.profile) if self.profile else None,
                     "radar_signals": self.radar_signals,
                     "precheck": self.precheck,
+                    "prechecks": list(self.prechecks),
+                    "precheck_log": str(PRECHECK_LOG),
                     "rcs_limits": self.rcs_limits,
                     "prepared": self.prepared_key is not None,
                     "prepared_actual": (self.prepared_scenario or {}).get("actual"),
@@ -287,6 +293,7 @@ class AebWebRunner:
             self.can_channel = None
             self.radar_signals = []
             self.precheck = None
+            self.prechecks = []
             self.rcs_limits = None
             self.prepared_key = None
             self.prepared_scenario = None
@@ -316,7 +323,11 @@ class AebWebRunner:
                 result = self.controller.run_precheck()
                 message = "Precheck abgeschlossen. RCS-Grenzen ermitteln."
             with self.lock:
+                vehicle_id = self.vehicle_id
+            result = save_precheck(vehicle_id, result)
+            with self.lock:
                 self.precheck = result
+                self.prechecks.append(result)
             self._set_state("bereit", message)
             return self.snapshot()
 
@@ -495,6 +506,7 @@ class AebWebRunner:
                 **(config.model_dump() if hasattr(config, "model_dump") else config.dict()),
                 "scenario": scenario,
                 "precheck": self.precheck,
+                "prechecks": list(self.prechecks),
                 "radest": radest_result,
                 "vehicle_profile": profile,
             }
@@ -783,6 +795,7 @@ PAGE = r'''<!doctype html>
     </div>
     <div class="actions"><button class="btn primary" id="connect">Verbinden</button><button class="btn secondary" id="disconnect" disabled>Trennen</button><button class="btn secondary" id="precheck" disabled>Precheck durchführen</button><button class="btn secondary" id="skipPrecheck" disabled>Precheck überspringen</button></div>
     <div class="checks" id="checks"><span class="check">Verbindung: getrennt</span><span class="check">Precheck: offen</span></div>
+    <div class="checks" id="precheckList"></div>
   </section>
 
   <section class="panel">
@@ -837,6 +850,7 @@ function setSession(s){const x=s.session||{};const busy=!!s.busy,running=!!s.run
   if(x.connected){$('vehicle').value=String(x.vehicle_id);$('channel').value=x.can_channel}
   const pre=x.precheck;const preText=!pre?'Precheck: offen':pre.skipped?'Precheck: übersprungen':`Precheck: ${pre.polarization??''} · ${pre.frequency_range??''} · ${pre.power??''}`;
   $('checks').innerHTML=chip(x.connected?true:null,x.connected?`Verbunden: Fahrzeug ${x.vehicle_id} auf ${x.can_channel} · Radar ${x.radar_signals.join(', ')}`:'Verbindung: getrennt')+(x.profile?chip(true,x.profile):'')+chip(pre?true:null,preText);
+  const all=x.prechecks||[];$('precheckList').innerHTML=all.length?all.map((p,i)=>chip(null,`Precheck ${i+1} · ${(p.time||'').slice(11)} · `+(p.skipped?'übersprungen':`${p.polarization??''} · ${p.frequency_range??''} · ${p.power??''}`))).join('')+`<span class="check" title="${escapeHtml(x.precheck_log||'')}">${all.length} gespeichert in test_runs/aeb_prechecks.csv</span>`:'';
   const limits=x.rcs_limits;$('rcsRange').textContent=limits?`${limits.rcs_min_dbsm.toFixed(2)} … ${limits.rcs_max_dbsm.toFixed(2)} dBsm`:'–';
   if(limits){$('rcs').min=limits.rcs_min_dbsm;$('rcs').max=limits.rcs_max_dbsm;if($('rcs').value==='')$('rcs').value=Math.min(Math.max(10,limits.rcs_min_dbsm),limits.rcs_max_dbsm).toFixed(1)}
   const r=x.last_radest;$('radestInfo').innerHTML=r?chip(true,`Letzter Test: RCS ${r.radest_rcs_dbsm} dBsm · txValue ${r.radest_tx_value??'–'} · attSet ${r.radest_att_set??'–'} · Temperatur ${r.radest_temperature_c??'–'} °C`):chip(null,'RadEsT-Arbeitspunkt: noch kein Test');
