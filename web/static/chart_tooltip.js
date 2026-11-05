@@ -13,18 +13,20 @@
                 position: fixed;
                 z-index: 1000;
                 min-width: 175px;
-                padding: 9px 11px;
-                border: 1px solid #abcdb9;
-                border-radius: 5px;
+                padding: 8px 12px;
+                border: 1px solid #e2e4e7;
+                border-radius: 8px;
                 background: rgba(255, 255, 255, .97);
-                box-shadow: 0 5px 18px rgba(0, 59, 50, .16);
-                color: #003b32;
-                font: 12px/1.45 Arial, sans-serif;
+                box-shadow: 0 4px 16px rgba(16, 20, 24, .12);
+                color: #1b1f24;
+                font: 12px/1.5 ui-monospace, "DejaVu Sans Mono", monospace;
+                font-variant-numeric: tabular-nums;
                 pointer-events: none;
             }
             .distance-chart-tooltip strong {
                 display: block;
-                margin-bottom: 3px;
+                margin-bottom: 4px;
+                font-weight: 500;
             }
             .distance-chart-marker {
                 position: fixed;
@@ -33,7 +35,7 @@
                 height: 10px;
                 border: 2px solid white;
                 border-radius: 50%;
-                box-shadow: 0 1px 5px rgba(0, 59, 50, .35);
+                box-shadow: 0 1px 4px rgba(16, 20, 24, .3);
                 pointer-events: none;
                 transform: translate(-50%, -50%);
             }

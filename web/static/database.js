@@ -84,7 +84,8 @@ function keyNumberEditor(vehicle) {
   const add = document.createElement("button");
   add.type = "button";
   add.className = "small-button";
-  add.textContent = "+ HSN/TSN";
+  add.textContent = "HSN/TSN";
+  add.dataset.icon = "plus";
   add.onclick = () => { const row = keyNumberRow(); rows.append(row); row.querySelector("input").focus(); };
   wrapper.append(add);
   return wrapper;
@@ -203,7 +204,7 @@ function renderOverview() {
   $("breadcrumbs").textContent = "";
   $("pageTitle").textContent = "Fahrzeuge";
   $("pageSubtitle").textContent = `${rows("vehicles").length} Fahrzeuge in der Datenbank`;
-  $("primaryAction").textContent = "+ Fahrzeug anlegen";
+  $("primaryAction").textContent = "Fahrzeug anlegen";
   $("primaryAction").disabled = state.locked;
   $("primaryAction").dataset.action = "newVehicle";
   renderVehicleList();
@@ -283,7 +284,7 @@ function renderVehicleWorkspace(vehicle, sensors) {
             ${sensors.length ? sensorOptions : '<option value="">Kein Radarsensor vorhanden</option>'}
           </select>
         </label>
-        ${action("+ Radarsensor hinzufügen", "newSensor", null, "primary")}
+        ${action("Radarsensor hinzufügen", "newSensor", null, "primary")}
       </div>
       ${sensor ? renderSensorWorkspace(sensor) : '<p class="empty-state">Lege einen Radarsensor an, um Hardware- und Softwarestände, DTC-Abfrage und Diagnosedaten zu konfigurieren.</p>'}
     </section>
@@ -309,17 +310,17 @@ function renderSensorWorkspace(sensor) {
     </div>
 
     <div class="subsection">
-      <div class="section-heading"><div><h3>Hardware- und Softwarestände</h3><p>Auslesbare Identifikationsmerkmale und bekannte Serienwerte.</p></div>${action("+ Kennung", "newIdentification", sensor.id)}</div>
+      <div class="section-heading"><div><h3>Hardware- und Softwarestände</h3><p>Auslesbare Identifikationsmerkmale und bekannte Serienwerte.</p></div>${action("Kennung", "newIdentification", sensor.id)}</div>
       ${identifications.length ? identifications.map(renderIdentification).join("") : '<p class="empty-inline">Noch keine Identifikationsmerkmale hinterlegt.</p>'}
     </div>
 
     <div class="subsection">
-      <div class="section-heading"><div><h3>DTC-Abfrage</h3><p>Fehlerspeicherabfrage dieses Radarsensors.</p></div>${action("+ DTC-Abfrage", "newDtc", sensor.id)}</div>
+      <div class="section-heading"><div><h3>DTC-Abfrage</h3><p>Fehlerspeicherabfrage dieses Radarsensors.</p></div>${action("DTC-Abfrage", "newDtc", sensor.id)}</div>
       ${dtcs.map(dtc => `<div class="list-row nested-card dtc-config-card"><div><strong>Service ${hex(dtc.service)}</strong><span>Subfunktion ${hex(dtc.subfunction)} · Statusmaske ${hex(dtc.status_mask)} · ${dtc.enabled ? "aktiv" : "inaktiv"}</span></div><div class="button-row">${action("Bearbeiten", "editDtc", dtc.id, "link-button")}${action("Löschen", "deleteDtc", dtc.id, "link-button danger-text")}</div></div>`).join("") || '<p class="empty-inline">Keine DTC-Abfrage konfiguriert.</p>'}
     </div>
 
     <div class="subsection diagnosis-subsection">
-      <div class="section-heading"><div><h3>Diagnosedaten</h3><p>Diagnoseabfragen und zugehörige Signalfelder.</p></div>${action("+ Diagnoseabfrage", "newParameter", sensor.id)}</div>
+      <div class="section-heading"><div><h3>Diagnosedaten</h3><p>Diagnoseabfragen und zugehörige Signalfelder.</p></div>${action("Diagnoseabfrage", "newParameter", sensor.id)}</div>
       ${parameters.length ? parameters.map(renderParameter).join("") : '<p class="empty-inline">Noch keine Diagnoseabfragen hinterlegt.</p>'}
     </div>
   </article>`;
@@ -330,7 +331,7 @@ function renderIdentification(item) {
   return `<div class="nested-card">
     <div class="nested-main"><div><strong>${esc(item.label)}</strong><span>DID ${hex(item.did)} · ${esc(item.data_type)}</span></div><div class="button-row">${action("Bearbeiten", "editIdentification", item.id, "link-button")}${action("Löschen", "deleteIdentification", item.id, "link-button danger-text")}</div></div>
     <div class="reference-list">${references.map(ref => `<div class="reference-row"><div><code>${esc(ref.value)}</code>${ref.note ? `<span>${esc(ref.note)}</span>` : ""}</div><div class="button-row">${action("Bearbeiten", "editReference", ref.id, "link-button")}${action("Löschen", "deleteReference", ref.id, "link-button danger-text")}</div></div>`).join("") || `<span class="muted">Noch kein zulässiger Referenzwert</span>`}</div>
-    ${action("+ Referenzwert", "newReference", item.id, "small-button")}
+    ${action("Referenzwert", "newReference", item.id, "small-button")}
   </div>`;
 }
 
@@ -339,7 +340,7 @@ function renderParameter(parameter) {
   return `<div class="nested-card">
     <div class="nested-main"><div><strong>Diagnoseabfrage</strong><span>SID ${hex(parameter.service)} · DID/PID ${hex(parameter.did)}</span></div><div class="button-row">${action("Bearbeiten", "editParameter", parameter.id, "link-button")}${action("Löschen", "deleteParameter", parameter.id, "link-button danger-text")}</div></div>
     <div class="signal-list">${fields.map(field => `<div class="list-row"><div><strong>${esc(field.name)}</strong><span>Byte ${field.byte_offset}, ${field.byte_length} Byte · ${esc(field.data_type)} · Faktor ${field.factor}${field.unit ? ` · ${esc(field.unit)}` : ""}</span></div><div class="button-row">${action("Bearbeiten", "editField", field.id, "link-button")}${action("Löschen", "deleteField", field.id, "link-button danger-text")}</div></div>`).join("") || `<span class="muted">Noch kein Signalfeld definiert.</span>`}</div>
-    ${action("+ Signalfeld", "newField", parameter.id, "small-button")}
+    ${action("Signalfeld", "newField", parameter.id, "small-button")}
   </div>`;
 }
 
