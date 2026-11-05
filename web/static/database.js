@@ -55,13 +55,6 @@ function orderedColumns(tableName, columns) {
   return [...columns].sort((left, right) => rank(left.name) - rank(right.name));
 }
 
-function keyNumbers(vehicle) {
-  const keys = related("vehicle_key_numbers", "vehicle_id", vehicle.id);
-  if (!keys.length) return "—";
-  const shown = keys.slice(0, 2).map(key => `${key.hsn} / ${key.tsn}`).join(", ");
-  return keys.length > 2 ? `${shown} +${keys.length - 2}` : shown;
-}
-
 function renderKeyNumbers(vehicle) {
   const keys = related("vehicle_key_numbers", "vehicle_id", vehicle.id);
   const list = keys.map(key => `<div class="list-row"><div><strong>HSN ${esc(key.hsn)} · TSN ${esc(key.tsn)}</strong>${key.note ? `<span>${esc(key.note)}</span>` : ""}</div><div class="button-row">${action("Bearbeiten", "editKeyNumber", key.id, "link-button")}${action("Löschen", "deleteKeyNumber", key.id, "link-button danger-text")}</div></div>`).join("");
@@ -215,7 +208,6 @@ function renderVehicleList() {
       <td>${esc(vehicle.variant || "—")}</td>
       <td>${esc(vehicle.generation || "—")}</td>
       <td>${esc(years(vehicle))}</td>
-      <td>${esc(keyNumbers(vehicle))}</td>
     </tr>`;
   }).join("");
 }
