@@ -27,7 +27,7 @@ function compareText(left, right) {
 
 const FIELD_INFO = {
   manufacturer:{label:"Hersteller"}, model:{label:"Modell"}, variant:{label:"Variante"}, generation:{label:"Baureihe"},
-  hsn:{label:"HSN (Herstellerschlüssel, 4 Ziffern)"}, tsn:{label:"TSN (Typschlüssel, 3 Zeichen)"},
+  hsn:{label:"HSN (Feld 2.1, 4 Ziffern)"}, tsn:{label:"TSN (Feld 2.2, erste 3 Zeichen)"},
   year_from:{label:"Baujahr von"}, year_to:{label:"Baujahr bis"}, description:{label:"Beschreibung", textarea:true},
   name:{label:"Bezeichnung"}, interface:{label:"Schnittstelle", choices:[["can","CAN"]]},
   channel:{label:"CAN-Kanal"}, bitrate:{label:"Bitrate [bit/s]", choices:[[125000,"125.000"],[250000,"250.000"],[500000,"500.000"],[1000000,"1.000.000"]]}, request_id:{label:"CAN Request-ID"},
@@ -44,7 +44,8 @@ const FIELD_INFO = {
 
 // Reihenfolge der Eingabefelder, unabhängig von der Spaltenreihenfolge in der DB.
 const COLUMN_ORDER = {
-  vehicles:["manufacturer", "model", "variant", "generation", "year_from", "year_to", "hsn", "tsn", "description"]
+  vehicles:["manufacturer", "model", "variant", "generation", "year_from", "year_to", "description"],
+  vehicle_key_numbers:["hsn", "tsn"]
 };
 
 function orderedColumns(tableName, columns) {
@@ -54,13 +55,19 @@ function orderedColumns(tableName, columns) {
   return [...columns].sort((left, right) => rank(left.name) - rank(right.name));
 }
 
-function keyNumbers(vehicle) {
-  if (!vehicle.hsn && !vehicle.tsn) return "—";
-  return `${vehicle.hsn || "—"} / ${vehicle.tsn || "—"}`;
+// HSN/TSN-Paare als Kacheln im selben Stil wie die übrigen Fahrzeugdaten.
+function renderKeyNumbers(vehicle) {
+  return related("vehicle_key_numbers", "vehicle_id", vehicle.id).map(key => `
+    <div class="fact key-fact">
+      <span>HSN / TSN<button class="key-fact-delete" data-action="deleteKeyNumber" data-id="${Number(key.id)}" title="Löschen" aria-label="HSN/TSN ${esc(key.hsn)} / ${esc(key.tsn)} löschen">×</button></span>
+      <button class="key-fact-value" data-action="editKeyNumber" data-id="${Number(key.id)}" title="Bearbeiten">${esc(key.hsn)} / ${esc(key.tsn)}</button>
+    </div>`).join("")
+    + `<button class="fact key-fact-add" data-action="newKeyNumber" data-id="${Number(vehicle.id)}"><span>HSN / TSN</span><strong>+ hinzufügen</strong></button>`;
 }
 
 const EDITORS = {
   vehicle:{table:"vehicles", title:"Fahrzeug", context:"Fahrzeugdaten"},
+  keyNumber:{table:"vehicle_key_numbers", title:"HSN/TSN", context:"Fahrzeugdaten"},
   sensor:{table:"ecus", title:"Radarsensor", context:"Sensor und Kommunikation"},
   identification:{table:"identification_parameters", title:"Hardware-/Softwarekennung", context:"Identifikation"},
   reference:{table:"accepted_identification_values", title:"Referenzwert", context:"Serienstand"},
@@ -183,7 +190,8 @@ function renderVehicleList() {
   const manufacturer = $("manufacturerFilter").value;
   const year = Number($("yearFilter").value) || null;
   const vehicles = rows("vehicles").filter(vehicle => {
-    const text = [vehicle.manufacturer, vehicle.model, vehicle.variant, vehicle.generation, vehicle.hsn, vehicle.tsn, vehicle.description].join(" ").toLowerCase();
+    const text = [vehicle.manufacturer, vehicle.model, vehicle.variant, vehicle.generation, vehicle.description,
+      ...related("vehicle_key_numbers", "vehicle_id", vehicle.id).flatMap(key => [key.hsn, key.tsn])].join(" ").toLowerCase();
     const yearMatches = !year || ((!vehicle.year_from || vehicle.year_from <= year) && (!vehicle.year_to || vehicle.year_to >= year));
     return (!query || text.includes(query)) && (!manufacturer || vehicle.manufacturer === manufacturer) && yearMatches;
   }).sort((left, right) =>
@@ -201,7 +209,6 @@ function renderVehicleList() {
       <td>${esc(vehicle.variant || "—")}</td>
       <td>${esc(vehicle.generation || "—")}</td>
       <td>${esc(years(vehicle))}</td>
-      <td>${esc(keyNumbers(vehicle))}</td>
     </tr>`;
   }).join("");
 }
@@ -240,8 +247,7 @@ function renderVehicleWorkspace(vehicle, sensors) {
         ${fact("Variante", vehicle.variant)}
         ${fact("Baureihe", vehicle.generation)}
         ${fact("Baujahr", years(vehicle))}
-        ${fact("HSN", vehicle.hsn)}
-        ${fact("TSN", vehicle.tsn)}
+        ${renderKeyNumbers(vehicle)}
       </div>
       <div class="description-box"><span>Beschreibung</span><p>${esc(vehicle.description || "Keine Beschreibung hinterlegt.")}</p></div>
     </section>
@@ -258,7 +264,7 @@ function renderVehicleWorkspace(vehicle, sensors) {
       ${sensor ? renderSensorWorkspace(sensor) : '<p class="empty-state">Lege einen Radarsensor an, um Hardware- und Softwarestände, DTC-Abfrage und Diagnosedaten zu konfigurieren.</p>'}
     </section>
 
-    <div class="danger-zone"><div><strong>Fahrzeug löschen</strong><p>Nur möglich, wenn keine Sensoren mehr zugeordnet sind.</p></div>${action("Fahrzeug löschen", "deleteVehicle", vehicle.id, "danger")}</div>`;
+    <div class="danger-zone"><div><strong>Fahrzeug löschen</strong><p>Nur möglich, wenn keine Sensoren und HSN/TSN mehr zugeordnet sind.</p></div>${action("Fahrzeug löschen", "deleteVehicle", vehicle.id, "danger")}</div>`;
 }
 
 function renderSensorWorkspace(sensor) {
@@ -424,6 +430,9 @@ function handleAction(actionName, id) {
     back:() => { selectedVehicleId=null; selectedSensorId=null; history.pushState({},"","/database"); render(); },
     newVehicle:() => openEditor("vehicle"), editVehicle:() => openEditor("vehicle", vehicle),
     deleteVehicle:() => remove("vehicles", id, "Fahrzeug"),
+    newKeyNumber:() => openEditor("keyNumber", null, {vehicle_id:selectedVehicleId}),
+    editKeyNumber:() => openEditor("keyNumber", find("vehicle_key_numbers", id), {vehicle_id:selectedVehicleId}),
+    deleteKeyNumber:() => remove("vehicle_key_numbers", id, "HSN/TSN"),
     newSensor:() => openEditor("sensor", null, {vehicle_id:selectedVehicleId}),
     editSensor:() => openEditor("sensor", find("ecus", id), {vehicle_id:selectedVehicleId}),
     deleteSensor:() => remove("ecus", id, "Radarsensor"),

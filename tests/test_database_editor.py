@@ -30,16 +30,25 @@ class DatabaseEditorTests(unittest.TestCase):
 
     def test_crud_backup_and_lock(self):
         data = self.client.get("/api/database").json()
-        self.assertEqual(len(data["tables"]), 7)
+        self.assertEqual(len(data["tables"]), 8)
         payload = dict(manufacturer="Test", model="Test", variant="E 220 d", generation=None,
-                       year_from=2020, year_to=None, hsn="0710", tsn="bpk", description=None)
+                       year_from=2020, year_to=None, description=None)
         created = self.client.post("/api/database/vehicles", json=payload)
         self.assertEqual(created.status_code, 200)
         self.assertIsInstance(created.json()["id"], int)
         row = self.client.get("/api/database").json()["tables"]["vehicles"]["rows"][-1]
         self.assertEqual(created.json()["id"], row["id"])
-        self.assertEqual((row["variant"], row["hsn"], row["tsn"]), ("E 220 d", "0710", "BPK"))
+        self.assertEqual(row["variant"], "E 220 d")
         self.assertTrue(list((database.DB_PATH.parent / "backups").glob("*.db")))
+        for hsn, tsn in (("0710", "bpk"), ("0710", "BPL")):
+            key = dict(vehicle_id=row["id"], hsn=hsn, tsn=tsn)
+            self.assertEqual(self.client.post("/api/database/vehicle_key_numbers", json=key).status_code, 200)
+        keys = self.client.get("/api/database").json()["tables"]["vehicle_key_numbers"]["rows"]
+        self.assertEqual([(k["hsn"], k["tsn"]) for k in keys if k["vehicle_id"] == row["id"]],
+                         [("0710", "BPK"), ("0710", "BPL")])
+        for key in keys:
+            if key["vehicle_id"] == row["id"]:
+                self.client.delete("/api/database/vehicle_key_numbers/" + str(key["id"]))
         payload["model"] = "Updated"
         url = "/api/database/vehicles/" + str(row["id"])
         self.assertEqual(self.client.put(url, json=payload).status_code, 200)
@@ -50,7 +59,8 @@ class DatabaseEditorTests(unittest.TestCase):
 
     def test_vehicle_migration_keeps_data(self):
         import sqlite3
-        with sqlite3.connect(database.DB_PATH) as raw:
+        from contextlib import closing
+        with closing(sqlite3.connect(database.DB_PATH)) as raw, raw:
             before = raw.execute("SELECT id, manufacturer, model, generation, year_from, year_to, description FROM vehicles ORDER BY id").fetchall()
         rows = self.client.get("/api/database").json()["tables"]["vehicles"]["rows"]
         self.assertEqual(
@@ -59,15 +69,31 @@ class DatabaseEditorTests(unittest.TestCase):
         )
         for row in rows:
             self.assertIn("variant", row)
-            self.assertIn("hsn", row)
-            self.assertIn("tsn", row)
+            self.assertNotIn("hsn", row)
+
+    def test_legacy_hsn_tsn_columns_move_to_list(self):
+        import sqlite3
+        from contextlib import closing
+        with closing(sqlite3.connect(database.DB_PATH)) as raw, raw:
+            raw.execute("ALTER TABLE vehicles ADD COLUMN variant TEXT")
+            raw.execute("ALTER TABLE vehicles ADD COLUMN hsn TEXT")
+            raw.execute("ALTER TABLE vehicles ADD COLUMN tsn TEXT")
+            raw.execute("UPDATE vehicles SET hsn='1313', tsn='BPK' WHERE id=1")
+            raw.execute("UPDATE vehicles SET hsn=NULL, tsn='XYZ', description=NULL WHERE id=2")
+        data = self.client.get("/api/database").json()["tables"]
+        self.assertNotIn("hsn", data["vehicles"]["rows"][0])
+        keys = [(k["vehicle_id"], k["hsn"], k["tsn"]) for k in data["vehicle_key_numbers"]["rows"]]
+        self.assertEqual(keys, [(1, "1313", "BPK")])
+        self.assertEqual(data["vehicles"]["rows"][1]["description"], "Alte Angabe: TSN XYZ")
 
     def test_hsn_tsn_validation(self):
-        base = dict(manufacturer="Test", model="Test", variant=None, generation=None,
-                    year_from=None, year_to=None, hsn=None, tsn=None, description=None)
-        self.assertEqual(self.client.post("/api/database/vehicles", json={**base, "hsn": "71"}).status_code, 422)
-        self.assertEqual(self.client.post("/api/database/vehicles", json={**base, "tsn": "BPK00012"}).status_code, 422)
-        self.assertEqual(self.client.post("/api/database/vehicles", json=base).status_code, 200)
+        base = dict(vehicle_id=1, hsn="1313", tsn="BPK")
+        url = "/api/database/vehicle_key_numbers"
+        self.assertEqual(self.client.post(url, json={**base, "hsn": "71"}).status_code, 422)
+        self.assertEqual(self.client.post(url, json={**base, "tsn": "BPK00012"}).status_code, 422)
+        self.assertEqual(self.client.post(url, json={**base, "tsn": None}).status_code, 422)
+        self.assertEqual(self.client.post(url, json=base).status_code, 200)
+        self.assertEqual(self.client.post(url, json=base).status_code, 422)
 
     def test_constraints(self):
         data = self.client.get("/api/database").json()
