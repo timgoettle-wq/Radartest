@@ -9,6 +9,7 @@ from database.database import get_connection, DB_PATH
 
 TABLES = {
     "vehicles": ("Fahrzeuge", {}),
+    "vehicle_key_numbers": ("HSN/TSN", {"vehicle_id": "vehicles"}),
     "ecus": ("Steuergeräte", {"vehicle_id": "vehicles"}),
     "diagnostic_parameters": ("Messparameter", {"ecu_id": "ecus"}),
     "signal_fields": ("Signalfelder", {"parameter_id": "diagnostic_parameters"}),
@@ -30,10 +31,16 @@ SIGNAL_NAMES = {
 }
 
 
+# Alte Einzelspalten, falls SQLite DROP COLUMN nicht kann. Werden ignoriert.
+HIDDEN_COLUMNS = {"vehicles": {"hsn", "tsn"}}
+
+
 def columns(connection, table):
     if table not in TABLES:
         raise HTTPException(404, "Unbekannte Tabelle")
-    return [dict(row) for row in connection.execute(f"PRAGMA table_info({table})")]
+    hidden = HIDDEN_COLUMNS.get(table, set())
+    return [dict(row) for row in connection.execute(f"PRAGMA table_info({table})")
+            if row["name"] not in hidden]
 
 
 def validate(connection, table, payload):
@@ -86,7 +93,7 @@ def validate(connection, table, payload):
         raise ValueError("Aktuell werden CAN und ISO-TP unterstützt")
     if table == "identification_parameters" and result["service"] != 34:
         raise ValueError("Identifikation unterstützt nur ReadDataByIdentifier (0x22)")
-    if table == "vehicles":
+    if table == "vehicle_key_numbers":
         if result.get("hsn") is not None:
             if not re.fullmatch(r"\d{4}", result["hsn"]):
                 raise ValueError("HSN: genau 4 Ziffern (Feld 2.1 im Fahrzeugschein)")
@@ -160,7 +167,10 @@ def make_database_router(lock, connected):
                                 f"UPDATE {table} SET {','.join(key + ' = ?' for key in values)} WHERE id = ?",
                                 [*values.values(), row_id])
                     return {"ok": True, "id": saved_id}
-                except (ValueError, TypeError, sqlite3.IntegrityError) as error:
+                except sqlite3.IntegrityError as error:
+                    text = "Dieser Eintrag existiert bereits." if "UNIQUE" in str(error) else str(error)
+                    raise HTTPException(422, text) from error
+                except (ValueError, TypeError) as error:
                     raise HTTPException(422, str(error)) from error
 
     @router.post("/{table}")

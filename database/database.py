@@ -48,9 +48,11 @@ def _ensure_identification_schema(connection):
 # Bestehende Datenbanken werden beim Öffnen ergänzt, vorhandene Daten bleiben.
 VEHICLE_EXTRA_COLUMNS = (
     ("variant", "TEXT"),  # Variante, z. B. "E 220 d"
-    ("hsn", "TEXT"),      # Herstellerschlüsselnummer (Feld 2.1)
-    ("tsn", "TEXT"),      # Typschlüsselnummer (Feld 2.2)
 )
+
+# HSN/TSN lagen kurzzeitig als einzelne Spalten in vehicles. Ein Modell kann
+# aber mehrere Schlüsselnummern haben, daher eigene Tabelle.
+LEGACY_KEY_COLUMNS = ("hsn", "tsn")
 
 
 def _ensure_vehicle_columns(connection):
@@ -59,18 +61,45 @@ def _ensure_vehicle_columns(connection):
     }
     if not existing:
         return
-    added = False
     for name, kind in VEHICLE_EXTRA_COLUMNS:
         if name not in existing:
             try:
                 connection.execute(f"ALTER TABLE vehicles ADD COLUMN {name} {kind}")
-                added = True
             except sqlite3.OperationalError as error:
                 # Eine parallele Verbindung hat die Spalte gerade angelegt.
                 if "duplicate column" not in str(error).lower():
                     raise
-    if added:
-        connection.commit()
+
+    connection.execute("""
+        CREATE TABLE IF NOT EXISTS vehicle_key_numbers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            vehicle_id INTEGER NOT NULL,
+            hsn TEXT NOT NULL,
+            tsn TEXT NOT NULL,
+            note TEXT,
+
+            UNIQUE(vehicle_id, hsn, tsn),
+
+            FOREIGN KEY(vehicle_id)
+                REFERENCES vehicles(id)
+                ON DELETE CASCADE
+        )
+    """)
+
+    if all(name in existing for name in LEGACY_KEY_COLUMNS):
+        connection.execute("""
+            INSERT OR IGNORE INTO vehicle_key_numbers (vehicle_id, hsn, tsn)
+            SELECT id, hsn, tsn FROM vehicles
+            WHERE hsn IS NOT NULL AND tsn IS NOT NULL
+        """)
+        for name in LEGACY_KEY_COLUMNS:
+            try:
+                connection.execute(f"ALTER TABLE vehicles DROP COLUMN {name}")
+            except sqlite3.OperationalError:
+                # Bereits von paralleler Verbindung entfernt, oder SQLite zu
+                # alt für DROP COLUMN: dann bleibt die Spalte ungenutzt stehen.
+                pass
+    connection.commit()
 
 
 def get_connection():
