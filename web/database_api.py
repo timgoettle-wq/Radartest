@@ -106,6 +106,32 @@ def validate(connection, table, payload):
     return result
 
 
+# Kindtabellen, die beim Löschen des Elterneintrags mitgelöscht werden
+# (ON DELETE CASCADE) und daher das Löschen nicht blockieren.
+CASCADE_CHILDREN = {"vehicle_key_numbers"}
+
+
+def validate_key_numbers(connection, pairs):
+    """HSN/TSN-Liste aus dem Fahrzeugdialog prüfen; Duplikate werden zusammengefasst."""
+    if not isinstance(pairs, list):
+        raise ValueError("HSN/TSN: ungültiges Format")
+    result = []
+    for pair in pairs:
+        if not isinstance(pair, dict):
+            raise ValueError("HSN/TSN: ungültiges Format")
+        hsn = str(pair.get("hsn") or "").strip()
+        tsn = str(pair.get("tsn") or "").strip()
+        if not hsn and not tsn:
+            continue
+        if not hsn or not tsn:
+            raise ValueError("HSN und TSN bitte immer zusammen angeben")
+        values = validate(connection, "vehicle_key_numbers", {"vehicle_id": 0, "hsn": hsn, "tsn": tsn})
+        key = (values["hsn"], values["tsn"])
+        if key not in result:
+            result.append(key)
+    return result
+
+
 def backup(connection):
     folder = DB_PATH.parent / "backups"
     folder.mkdir(exist_ok=True)
@@ -143,9 +169,15 @@ def make_database_router(lock, connected):
                         f"SELECT id FROM {table} WHERE id = ?", (row_id,)
                     ).fetchone():
                         raise HTTPException(404, "Datensatz nicht gefunden")
+                    key_numbers = None
+                    if table == "vehicles" and not delete and "key_numbers" in payload:
+                        payload = dict(payload)
+                        key_numbers = validate_key_numbers(connection, payload.pop("key_numbers"))
                     values = None if delete else validate(connection, table, payload)
                     if delete:
                         for child, (_, keys) in TABLES.items():
+                            if child in CASCADE_CHILDREN:
+                                continue
                             for key, parent in keys.items():
                                 if parent == table and connection.execute(
                                     f"SELECT 1 FROM {child} WHERE {key} = ? LIMIT 1", (row_id,)
@@ -166,6 +198,12 @@ def make_database_router(lock, connected):
                             connection.execute(
                                 f"UPDATE {table} SET {','.join(key + ' = ?' for key in values)} WHERE id = ?",
                                 [*values.values(), row_id])
+                        if key_numbers is not None:
+                            connection.execute(
+                                "DELETE FROM vehicle_key_numbers WHERE vehicle_id = ?", (saved_id,))
+                            connection.executemany(
+                                "INSERT INTO vehicle_key_numbers (vehicle_id, hsn, tsn) VALUES (?, ?, ?)",
+                                [(saved_id, hsn, tsn) for hsn, tsn in key_numbers])
                     return {"ok": True, "id": saved_id}
                 except sqlite3.IntegrityError as error:
                     text = "Dieser Eintrag existiert bereits." if "UNIQUE" in str(error) else str(error)

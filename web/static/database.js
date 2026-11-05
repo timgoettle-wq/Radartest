@@ -55,19 +55,43 @@ function orderedColumns(tableName, columns) {
   return [...columns].sort((left, right) => rank(left.name) - rank(right.name));
 }
 
-// HSN/TSN-Paare als Kacheln im selben Stil wie die übrigen Fahrzeugdaten.
+// HSN/TSN-Paare als normale Kacheln; bearbeitet werden sie im Fahrzeugdialog.
 function renderKeyNumbers(vehicle) {
-  return related("vehicle_key_numbers", "vehicle_id", vehicle.id).map(key => `
-    <div class="fact key-fact">
-      <span>HSN / TSN<button class="key-fact-delete" data-action="deleteKeyNumber" data-id="${Number(key.id)}" title="Löschen" aria-label="HSN/TSN ${esc(key.hsn)} / ${esc(key.tsn)} löschen">×</button></span>
-      <button class="key-fact-value" data-action="editKeyNumber" data-id="${Number(key.id)}" title="Bearbeiten">${esc(key.hsn)} / ${esc(key.tsn)}</button>
-    </div>`).join("")
-    + `<button class="fact key-fact-add" data-action="newKeyNumber" data-id="${Number(vehicle.id)}"><span>HSN / TSN</span><strong>+ hinzufügen</strong></button>`;
+  const keys = related("vehicle_key_numbers", "vehicle_id", vehicle.id);
+  if (!keys.length) return fact("HSN / TSN", null);
+  return keys.map(key => fact("HSN / TSN", `${key.hsn} / ${key.tsn}`)).join("");
+}
+
+function keyNumberRow(hsn="", tsn="") {
+  const row = document.createElement("div");
+  row.className = "key-number-row";
+  row.innerHTML = `<input class="key-hsn" type="text" inputmode="numeric" maxlength="4" placeholder="HSN" aria-label="HSN" value="${esc(hsn)}">
+    <span aria-hidden="true">/</span>
+    <input class="key-tsn" type="text" maxlength="3" placeholder="TSN" aria-label="TSN" value="${esc(tsn)}">
+    <button type="button" class="link-button danger-text" title="Entfernen" aria-label="HSN/TSN entfernen">Entfernen</button>`;
+  row.querySelector("button").onclick = () => row.remove();
+  return row;
+}
+
+function keyNumberEditor(vehicle) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "wide key-number-editor";
+  wrapper.innerHTML = `<span>HSN / TSN</span><div class="key-number-rows"></div>`;
+  const rows = wrapper.querySelector(".key-number-rows");
+  const keys = vehicle ? related("vehicle_key_numbers", "vehicle_id", vehicle.id) : [];
+  keys.forEach(key => rows.append(keyNumberRow(key.hsn, key.tsn)));
+  if (!keys.length) rows.append(keyNumberRow());
+  const add = document.createElement("button");
+  add.type = "button";
+  add.className = "small-button";
+  add.textContent = "+ HSN/TSN";
+  add.onclick = () => { const row = keyNumberRow(); rows.append(row); row.querySelector("input").focus(); };
+  wrapper.append(add);
+  return wrapper;
 }
 
 const EDITORS = {
   vehicle:{table:"vehicles", title:"Fahrzeug", context:"Fahrzeugdaten"},
-  keyNumber:{table:"vehicle_key_numbers", title:"HSN/TSN", context:"Fahrzeugdaten"},
   sensor:{table:"ecus", title:"Radarsensor", context:"Sensor und Kommunikation"},
   identification:{table:"identification_parameters", title:"Hardware-/Softwarekennung", context:"Identifikation"},
   reference:{table:"accepted_identification_values", title:"Referenzwert", context:"Serienstand"},
@@ -264,7 +288,7 @@ function renderVehicleWorkspace(vehicle, sensors) {
       ${sensor ? renderSensorWorkspace(sensor) : '<p class="empty-state">Lege einen Radarsensor an, um Hardware- und Softwarestände, DTC-Abfrage und Diagnosedaten zu konfigurieren.</p>'}
     </section>
 
-    <div class="danger-zone"><div><strong>Fahrzeug löschen</strong><p>Nur möglich, wenn keine Sensoren und HSN/TSN mehr zugeordnet sind.</p></div>${action("Fahrzeug löschen", "deleteVehicle", vehicle.id, "danger")}</div>`;
+    <div class="danger-zone"><div><strong>Fahrzeug löschen</strong><p>Nur möglich, wenn keine Sensoren mehr zugeordnet sind.</p></div>${action("Fahrzeug löschen", "deleteVehicle", vehicle.id, "danger")}</div>`;
 }
 
 function renderSensorWorkspace(sensor) {
@@ -376,6 +400,13 @@ function openEditor(kind, row=null, fixed={}) {
     wrapper.append(caption, input);
     $("editor").append(wrapper);
   });
+  if (kind === "vehicle") {
+    // HSN/TSN direkt nach Baujahr, vor der Beschreibung.
+    const description = $("editor").querySelector('[name="description"]')?.closest("label");
+    $("editor").insertBefore(keyNumberEditor(row), description || null);
+  }
+  $("editorForm").querySelector(":scope > .form-hint").hidden =
+    !table.columns.some(column => state.hex_fields.includes(column.name));
   $("editorDialog").showModal();
 }
 
@@ -390,6 +421,12 @@ async function saveEditor(event) {
   }
   if (kind === "parameter") {
     payload.name = diagnosticParameterKey(payload.service, payload.did);
+  }
+  if (kind === "vehicle") {
+    payload.key_numbers = [...$("editor").querySelectorAll(".key-number-row")].map(item => ({
+      hsn:item.querySelector(".key-hsn").value.trim(),
+      tsn:item.querySelector(".key-tsn").value.trim()
+    })).filter(pair => pair.hsn || pair.tsn);
   }
   try {
     const result = await request(`/api/database/${table}${row ? "/" + row.id : ""}`, {
@@ -430,9 +467,6 @@ function handleAction(actionName, id) {
     back:() => { selectedVehicleId=null; selectedSensorId=null; history.pushState({},"","/database"); render(); },
     newVehicle:() => openEditor("vehicle"), editVehicle:() => openEditor("vehicle", vehicle),
     deleteVehicle:() => remove("vehicles", id, "Fahrzeug"),
-    newKeyNumber:() => openEditor("keyNumber", null, {vehicle_id:selectedVehicleId}),
-    editKeyNumber:() => openEditor("keyNumber", find("vehicle_key_numbers", id), {vehicle_id:selectedVehicleId}),
-    deleteKeyNumber:() => remove("vehicle_key_numbers", id, "HSN/TSN"),
     newSensor:() => openEditor("sensor", null, {vehicle_id:selectedVehicleId}),
     editSensor:() => openEditor("sensor", find("ecus", id), {vehicle_id:selectedVehicleId}),
     deleteSensor:() => remove("ecus", id, "Radarsensor"),
