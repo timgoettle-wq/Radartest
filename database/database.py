@@ -92,6 +92,14 @@ def _ensure_vehicle_columns(connection):
             SELECT id, hsn, tsn FROM vehicles
             WHERE hsn IS NOT NULL AND tsn IS NOT NULL
         """)
+        # Nur HSN oder nur TSN eingetragen: in die Beschreibung retten,
+        # damit beim Entfernen der Spalten nichts verloren geht.
+        connection.execute("""
+            UPDATE vehicles SET description = TRIM(
+                COALESCE(description || ' ', '') || 'Alte Angabe:'
+                || COALESCE(' HSN ' || hsn, '') || COALESCE(' TSN ' || tsn, ''))
+            WHERE (hsn IS NULL) != (tsn IS NULL)
+        """)
         for name in LEGACY_KEY_COLUMNS:
             try:
                 connection.execute(f"ALTER TABLE vehicles DROP COLUMN {name}")

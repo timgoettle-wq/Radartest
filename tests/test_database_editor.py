@@ -79,10 +79,12 @@ class DatabaseEditorTests(unittest.TestCase):
             raw.execute("ALTER TABLE vehicles ADD COLUMN hsn TEXT")
             raw.execute("ALTER TABLE vehicles ADD COLUMN tsn TEXT")
             raw.execute("UPDATE vehicles SET hsn='1313', tsn='BPK' WHERE id=1")
+            raw.execute("UPDATE vehicles SET hsn=NULL, tsn='XYZ', description=NULL WHERE id=2")
         data = self.client.get("/api/database").json()["tables"]
         self.assertNotIn("hsn", data["vehicles"]["rows"][0])
         keys = [(k["vehicle_id"], k["hsn"], k["tsn"]) for k in data["vehicle_key_numbers"]["rows"]]
         self.assertEqual(keys, [(1, "1313", "BPK")])
+        self.assertEqual(data["vehicles"]["rows"][1]["description"], "Alte Angabe: TSN XYZ")
 
     def test_hsn_tsn_validation(self):
         base = dict(vehicle_id=1, hsn="1313", tsn="BPK", note=None)
