@@ -62,8 +62,13 @@ def _ensure_vehicle_columns(connection):
     added = False
     for name, kind in VEHICLE_EXTRA_COLUMNS:
         if name not in existing:
-            connection.execute(f"ALTER TABLE vehicles ADD COLUMN {name} {kind}")
-            added = True
+            try:
+                connection.execute(f"ALTER TABLE vehicles ADD COLUMN {name} {kind}")
+                added = True
+            except sqlite3.OperationalError as error:
+                # Eine parallele Verbindung hat die Spalte gerade angelegt.
+                if "duplicate column" not in str(error).lower():
+                    raise
     if added:
         connection.commit()
 
