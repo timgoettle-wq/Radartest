@@ -1,6 +1,7 @@
 """Small, allowlisted configuration editor. Never exposes arbitrary SQL."""
 import sqlite3
 import math
+import re
 from datetime import datetime, timezone
 from contextlib import closing
 from fastapi import APIRouter, HTTPException
@@ -85,6 +86,14 @@ def validate(connection, table, payload):
         raise ValueError("Aktuell werden CAN und ISO-TP unterstützt")
     if table == "identification_parameters" and result["service"] != 34:
         raise ValueError("Identifikation unterstützt nur ReadDataByIdentifier (0x22)")
+    if table == "vehicles":
+        if result.get("hsn") is not None:
+            if not re.fullmatch(r"\d{4}", result["hsn"]):
+                raise ValueError("HSN: genau 4 Ziffern (Feld 2.1 im Fahrzeugschein)")
+        if result.get("tsn") is not None:
+            result["tsn"] = result["tsn"].upper()
+            if not re.fullmatch(r"[A-Z0-9]{3}", result["tsn"]):
+                raise ValueError("TSN: genau 3 Zeichen, die ersten drei aus Feld 2.2 im Fahrzeugschein")
     if table == "signal_fields" and result["name"] not in SIGNAL_NAMES:
         raise ValueError("Unbekannter standardisierter Signalname")
     return result

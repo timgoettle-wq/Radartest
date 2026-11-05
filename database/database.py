@@ -44,11 +44,36 @@ def _ensure_identification_schema(connection):
     connection.commit()
 
 
+# Spalten, die nachträglich zur Fahrzeugtabelle hinzugekommen sind.
+# Bestehende Datenbanken werden beim Öffnen ergänzt, vorhandene Daten bleiben.
+VEHICLE_EXTRA_COLUMNS = (
+    ("variant", "TEXT"),  # Variante, z. B. "E 220 d"
+    ("hsn", "TEXT"),      # Herstellerschlüsselnummer (Feld 2.1)
+    ("tsn", "TEXT"),      # Typschlüsselnummer (Feld 2.2)
+)
+
+
+def _ensure_vehicle_columns(connection):
+    existing = {
+        row[1] for row in connection.execute("PRAGMA table_info(vehicles)")
+    }
+    if not existing:
+        return
+    added = False
+    for name, kind in VEHICLE_EXTRA_COLUMNS:
+        if name not in existing:
+            connection.execute(f"ALTER TABLE vehicles ADD COLUMN {name} {kind}")
+            added = True
+    if added:
+        connection.commit()
+
+
 def get_connection():
     connection = sqlite3.connect(DB_PATH)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
     _ensure_identification_schema(connection)
+    _ensure_vehicle_columns(connection)
 
     return connection
 
