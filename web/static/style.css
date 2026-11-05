@@ -870,52 +870,9 @@ button.primary,.database-page button.secondary,.database-page button.danger,.res
 .database-page #detailContent .vehicle-data-section > .facts-grid .fact {background:transparent;}
 
 
-/* Vergleichsvarianten Fahrzeugdetail (?layout=table|values|collapsed).
-   Nach der Auswahl bleibt nur eine. */
-.visually-hidden {position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;}
+/* Fahrzeugdetail: Kennungen, DTC- und Diagnoseabfragen als aufklappbare Zeilen. */
 .database-page #detailContent .mono,
 .database-page #detailContent code {font-family:"DejaVu Sans Mono",Consolas,"Liberation Mono",monospace;font-variant-numeric:tabular-nums;}
-.database-page #detailContent .link-button.add-link {padding:4px 0;font-size:13px;}
-
-/* Variante Tabelle */
-.database-page #detailContent .config-table-wrap {overflow-x:auto;border:1px solid #dbe5df;border-radius:6px;background:#fff;}
-.database-page #detailContent .config-table {width:100%;border-collapse:collapse;font-size:14px;}
-.database-page #detailContent .config-table th {padding:10px 12px;text-align:left;font-size:12px;font-weight:650;color:var(--text-muted);background:#f7faf8;border-bottom:1px solid #dbe5df;white-space:nowrap;}
-.database-page #detailContent .config-table td {padding:10px 12px;vertical-align:top;border-bottom:1px solid #edf2ef;}
-.database-page #detailContent .config-table tr:last-child td {border-bottom:0;}
-.database-page #detailContent .config-table .num {text-align:right;}
-.database-page #detailContent .config-table .row-action {text-align:right;white-space:nowrap;width:1%;}
-.database-page #detailContent .reference-values {display:flex;flex-direction:column;align-items:flex-start;gap:6px;}
-.database-page #detailContent .reference-value {display:flex;flex-direction:column;align-items:flex-start;gap:2px;margin:0;padding:2px 0;background:transparent;border:0;color:var(--text-primary);text-align:left;cursor:pointer;font-weight:400;}
-.database-page #detailContent .reference-value code {font-size:14px;}
-.database-page #detailContent .reference-value span {font-size:12px;color:#5f6f66;}
-.database-page #detailContent .reference-value:hover code {text-decoration:underline;text-underline-offset:3px;color:var(--green-dark);}
-.database-page #detailContent .parameter-block {margin-top:12px;}
-.database-page #detailContent .parameter-block + .parameter-block {margin-top:24px;}
-.database-page #detailContent .parameter-block-head {display:flex;align-items:baseline;gap:12px;margin-bottom:8px;}
-.database-page #detailContent .parameter-block-head .mono {color:#5f6f66;font-size:13px;}
-.database-page #detailContent .parameter-block-head .link-button {margin-left:auto;}
-
-/* Variante Werte vorn */
-.database-page #detailContent .value-rows {border-top:1px solid #e6ece8;}
-.database-page #detailContent .value-row {display:grid;grid-template-columns:minmax(180px,1fr) minmax(200px,1.4fr) auto;gap:8px 24px;align-items:center;padding:12px 0;border-bottom:1px solid #e6ece8;}
-.database-page #detailContent .value-row-values {display:flex;flex-direction:column;align-items:flex-start;gap:4px;}
-.database-page #detailContent .reference-value.lead code,
-.database-page #detailContent .lead-code {font-size:17px;font-weight:600;color:var(--text-primary);}
-.database-page #detailContent .value-row-meta strong {display:block;font-size:14px;}
-.database-page #detailContent .value-row-meta span {display:block;margin-top:2px;font-size:13px;color:#5f6f66;}
-.database-page #detailContent .value-row-actions {display:flex;gap:16px;justify-content:flex-end;}
-.database-page #detailContent .signal-grid {display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;}
-.database-page #detailContent .signal-tile {display:flex;flex-direction:column;align-items:flex-start;gap:4px;margin:0;padding:10px 12px;background:#fff;border:1px solid #dbe5df;border-radius:6px;color:var(--text-primary);text-align:left;font-weight:400;cursor:pointer;}
-.database-page #detailContent .signal-tile:hover {border-color:var(--green-primary);}
-.database-page #detailContent .signal-tile code {font-size:15px;font-weight:600;}
-.database-page #detailContent .signal-tile span {font-size:12px;color:#5f6f66;}
-@media(max-width:700px) {
-    .database-page #detailContent .value-row {grid-template-columns:1fr;}
-    .database-page #detailContent .value-row-actions {justify-content:flex-start;}
-}
-
-/* Variante Eingeklappt */
 .database-page #detailContent .disclosure-list {border:1px solid #dbe5df;border-radius:6px;background:#fff;}
 .database-page #detailContent .disclosure-row + .disclosure-row {border-top:1px solid #edf2ef;}
 .database-page #detailContent .disclosure-row summary {display:grid;grid-template-columns:minmax(180px,1.2fr) minmax(110px,.8fr) minmax(120px,1fr) auto;gap:16px;align-items:center;padding:12px 16px;cursor:pointer;list-style:none;font-size:14px;}
