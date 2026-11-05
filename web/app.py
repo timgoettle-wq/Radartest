@@ -34,6 +34,16 @@ selected_vehicle_id = None
 controller_lock = threading.RLock()
 WEB_DIR = Path(__file__).resolve().parent
 app.mount("/static", StaticFiles(directory=WEB_DIR / "static"), name="static")
+
+
+@app.middleware("http")
+async def revalidate_static_files(request, call_next):
+    # Nach einem git pull sollen Browser neue CSS/JS-Dateien sofort laden.
+    # "no-cache" erzwingt nur eine Rückfrage; unveränderte Dateien kommen als 304.
+    response = await call_next(request)
+    if request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
 app.include_router(make_database_router(
     controller_lock, lambda: controller is not None
 ))
