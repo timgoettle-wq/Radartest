@@ -889,3 +889,19 @@ button.primary,.database-page button.secondary,.database-page button.danger,.res
     .database-page #detailContent .disclosure-row summary .mono,
     .database-page #detailContent .disclosure-row summary code {grid-column:1;}
 }
+
+
+/* Ergebnisliste: Run-Status und Gruppen (Vergleichsvarianten ?list=). */
+.results-page .run-status {display:inline-flex;align-items:center;gap:8px;font-weight:650;white-space:nowrap;color:var(--text-primary);}
+.results-page .run-status i {width:9px;height:9px;border-radius:50%;background:#9aa8a1;}
+.results-page .run-status.success i {background:var(--green-primary);}
+.results-page .run-status.warning i {background:#d98b00;}
+.results-page .run-status.error i {background:#b3262e;}
+.results-page .run-status.error {color:#92262c;}
+.results-page .results-table .mono,
+.results-page .results-table code {font-family:"DejaVu Sans Mono",Consolas,"Liberation Mono",monospace;font-variant-numeric:tabular-nums;font-size:13px;color:#4d5f56;}
+.results-page .result-group + .result-group {margin-top:28px;}
+.results-page .result-group-head {display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin:0 0 10px;}
+.results-page .result-group-head h2 {margin:0;font-size:17px;}
+.results-page .result-group-head span {color:var(--text-muted);font-size:13px;}
+.results-page section.result-group {padding:0;background:transparent;border:0;border-radius:0;box-shadow:none;}

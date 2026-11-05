@@ -37,12 +37,7 @@
                 <label><span>Prüfart</span><select id="resultTypeFilter"><option value="">Alle Prüfarten</option><option value="static">Statisch</option><option value="dynamic">Dynamisch</option></select></label>
                 <button id="reloadResults" class="secondary" type="button">Aktualisieren</button>
             </div>
-            <div class="table-scroll results-table-wrap">
-                <table class="results-table">
-                    <thead><tr><th>Datum</th><th>Fahrzeug</th><th>Messungen</th><th>Quick Check</th><th>Precheck</th></tr></thead>
-                    <tbody id="resultsTableBody"></tbody>
-                </table>
-            </div>
+            <div id="resultsList" class="results-list"></div>
             <p id="emptyResults" class="empty-state" hidden>Keine passenden TestRuns gefunden.</p>
         </section>
 

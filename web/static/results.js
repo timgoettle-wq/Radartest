@@ -158,6 +158,91 @@ async function loadResults() {
     }
 }
 
+// Vergleichsvarianten der Ergebnisliste (?list=status|vehicle|day).
+// Nach Tims Wahl bleibt nur eine.
+const LIST_VARIANT = new URLSearchParams(location.search).get("list") || "status";
+
+function escapeHtml(value) {
+    return String(value ?? "").replace(/[&<>"']/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char]));
+}
+
+function badgeHtml(status) {
+    return `<span class="status-pill ${statusClass(status)}">${escapeHtml(statusLabels[status] || status || "Unbekannt")}</span>`;
+}
+
+function runStatusHtml(status) {
+    return `<span class="run-status ${statusClass(status)}"><i aria-hidden="true"></i>${escapeHtml(statusLabels[status] || status || "Unbekannt")}</span>`;
+}
+
+function measurementText(run) {
+    const types = (run.test_types || []).map(type => type === "dynamic" ? "dynamisch" : type === "static" ? "statisch" : type);
+    if (!run.test_count) return "keine";
+    return `${run.test_count} · ${types.join(", ")}`;
+}
+
+function formatTime(value) {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? "–" : date.toLocaleTimeString("de-DE", {hour:"2-digit", minute:"2-digit"});
+}
+
+function formatDay(value) {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? "Ohne Datum" : date.toLocaleDateString("de-DE", {weekday:"long", day:"numeric", month:"long", year:"numeric"});
+}
+
+function runRow(run, cells) {
+    return `<tr class="clickable-table-row" data-run-id="${escapeHtml(run.run_id)}" tabindex="0" role="button">${cells.map(cell => `<td>${cell}</td>`).join("")}</tr>`;
+}
+
+function groupBy(runs, keyOf) {
+    const groups = new Map();
+    for (const run of runs) {
+        const key = keyOf(run);
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(run);
+    }
+    return groups;
+}
+
+function renderResultList(runs) {
+    if (LIST_VARIANT === "vehicle") {
+        const groups = [...groupBy(runs, run => run.vehicle_name)].sort((left, right) => left[0].localeCompare(right[0], "de"));
+        return groups.map(([vehicle, items]) => `<section class="result-group">
+            <div class="result-group-head"><h2>${escapeHtml(vehicle)}</h2><span>${items.length === 1 ? "1 TestRun" : `${items.length} TestRuns`}</span></div>
+            <div class="table-scroll results-table-wrap"><table class="results-table">
+                <thead><tr><th>Datum</th><th>Status</th><th>Messungen</th><th>Quick Check</th><th>Precheck</th><th>TestRun-ID</th></tr></thead>
+                <tbody>${items.map(run => runRow(run, [
+                    escapeHtml(formatDate(run.start_time)), runStatusHtml(run.status), escapeHtml(measurementText(run)),
+                    badgeHtml(run.quick_check_status), badgeHtml(run.precheck_status), `<code>${escapeHtml(run.run_id)}</code>`
+                ])).join("")}</tbody>
+            </table></div>
+        </section>`).join("");
+    }
+    if (LIST_VARIANT === "day") {
+        const groups = groupBy(runs, run => formatDay(run.start_time));
+        return [...groups].map(([day, items]) => `<section class="result-group">
+            <div class="result-group-head"><h2>${escapeHtml(day)}</h2><span>${items.length === 1 ? "1 TestRun" : `${items.length} TestRuns`}</span></div>
+            <div class="table-scroll results-table-wrap"><table class="results-table">
+                <thead><tr><th>Uhrzeit</th><th>Fahrzeug</th><th>Status</th><th>Messungen</th><th>Quick Check</th><th>Precheck</th></tr></thead>
+                <tbody>${items.map(run => runRow(run, [
+                    `<span class="mono">${escapeHtml(formatTime(run.start_time))}</span>`,
+                    `<strong>${escapeHtml(run.vehicle_name)}</strong><small>${escapeHtml(run.run_id)}</small>`,
+                    runStatusHtml(run.status), escapeHtml(measurementText(run)),
+                    badgeHtml(run.quick_check_status), badgeHtml(run.precheck_status)
+                ])).join("")}</tbody>
+            </table></div>
+        </section>`).join("");
+    }
+    return `<div class="table-scroll results-table-wrap"><table class="results-table">
+        <thead><tr><th>Status</th><th>Datum</th><th>Fahrzeug</th><th>Messungen</th><th>Quick Check</th><th>Precheck</th></tr></thead>
+        <tbody>${runs.map(run => runRow(run, [
+            runStatusHtml(run.status), escapeHtml(formatDate(run.start_time)),
+            `<strong>${escapeHtml(run.vehicle_name)}</strong><small>${escapeHtml(run.run_id)}</small>`,
+            escapeHtml(measurementText(run)), badgeHtml(run.quick_check_status), badgeHtml(run.precheck_status)
+        ])).join("")}</tbody>
+    </table></div>`;
+}
+
 function renderResults() {
     const query = $("resultSearch").value.trim().toLocaleLowerCase("de");
     const type = $("resultTypeFilter").value;
@@ -166,32 +251,10 @@ function renderResults() {
         return (!query || searchText.includes(query))
             && (!type || (run.test_types || []).includes(type));
     });
-    const body = $("resultsTableBody");
-    body.replaceChildren();
     $("resultsCount").textContent = resultState.results.length === 1
         ? "1 TestRun im Ergebnisarchiv"
         : resultState.results.length + " TestRuns im Ergebnisarchiv";
-
-    for (const run of visible) {
-        const row = body.insertRow();
-        row.className = "clickable-table-row";
-        row.tabIndex = 0;
-        row.setAttribute("role", "button");
-        row.insertCell().textContent = formatDate(run.start_time);
-        const vehicleCell = row.insertCell();
-        vehicleCell.append(textElement("strong", run.vehicle_name));
-        vehicleCell.append(textElement("small", run.run_id));
-        row.insertCell().textContent = String(run.test_count);
-        row.insertCell().append(badge(run.quick_check_status));
-        row.insertCell().append(badge(run.precheck_status));
-        row.addEventListener("click", () => openRun(run.run_id));
-        row.addEventListener("keydown", event => {
-            if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                openRun(run.run_id);
-            }
-        });
-    }
+    $("resultsList").innerHTML = visible.length ? renderResultList(visible) : "";
 
     $("emptyResults").hidden = visible.length > 0;
 }
@@ -520,6 +583,17 @@ async function restoreFromLocation() {
     if (testId) await openMeasurement(runId, testId, false);
 }
 
+$("resultsList").addEventListener("click", event => {
+    const row = event.target.closest("[data-run-id]");
+    if (row) openRun(row.dataset.runId);
+});
+$("resultsList").addEventListener("keydown", event => {
+    const row = event.target.closest("[data-run-id]");
+    if (row && (event.key === "Enter" || event.key === " ")) {
+        event.preventDefault();
+        openRun(row.dataset.runId);
+    }
+});
 $("reloadResults").addEventListener("click", loadResults);
 $("deleteRun").addEventListener("click", deleteCurrentRun);
 $("resultSearch").addEventListener("input", renderResults);
