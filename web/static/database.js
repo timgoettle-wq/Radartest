@@ -76,7 +76,7 @@ function keyNumberRow(hsn="", tsn="") {
 function keyNumberEditor(vehicle) {
   const wrapper = document.createElement("div");
   wrapper.className = "wide key-number-editor";
-  wrapper.innerHTML = `<span>HSN / TSN</span><p class="form-hint">HSN aus Feld 2.1 (4 Ziffern), TSN aus Feld 2.2 (erste 3 Zeichen). Ein Modell kann mehrere haben.</p><div class="key-number-rows"></div>`;
+  wrapper.innerHTML = `<span>HSN / TSN</span><div class="key-number-rows"></div>`;
   const rows = wrapper.querySelector(".key-number-rows");
   const keys = vehicle ? related("vehicle_key_numbers", "vehicle_id", vehicle.id) : [];
   keys.forEach(key => rows.append(keyNumberRow(key.hsn, key.tsn)));
