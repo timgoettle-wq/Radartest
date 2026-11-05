@@ -55,12 +55,14 @@ function orderedColumns(tableName, columns) {
   return [...columns].sort((left, right) => rank(left.name) - rank(right.name));
 }
 
+// HSN/TSN-Paare als Kacheln im selben Stil wie die übrigen Fahrzeugdaten.
 function renderKeyNumbers(vehicle) {
-  const keys = related("vehicle_key_numbers", "vehicle_id", vehicle.id);
-  const chips = keys.map(key => `<span class="key-chip"><button class="key-chip-edit" data-action="editKeyNumber" data-id="${Number(key.id)}" title="Bearbeiten">${esc(key.hsn)} / ${esc(key.tsn)}</button><button class="key-chip-delete" data-action="deleteKeyNumber" data-id="${Number(key.id)}" title="Löschen" aria-label="HSN/TSN ${esc(key.hsn)} / ${esc(key.tsn)} löschen">×</button></span>`).join("");
-  return `<div class="description-box key-numbers"><span>HSN / TSN</span>
-      <div class="key-chip-row">${chips}${action("+ HSN/TSN", "newKeyNumber", vehicle.id, "small-button")}</div>
-    </div>`;
+  return related("vehicle_key_numbers", "vehicle_id", vehicle.id).map(key => `
+    <div class="fact key-fact">
+      <span>HSN / TSN<button class="key-fact-delete" data-action="deleteKeyNumber" data-id="${Number(key.id)}" title="Löschen" aria-label="HSN/TSN ${esc(key.hsn)} / ${esc(key.tsn)} löschen">×</button></span>
+      <button class="key-fact-value" data-action="editKeyNumber" data-id="${Number(key.id)}" title="Bearbeiten">${esc(key.hsn)} / ${esc(key.tsn)}</button>
+    </div>`).join("")
+    + `<button class="fact key-fact-add" data-action="newKeyNumber" data-id="${Number(vehicle.id)}"><span>HSN / TSN</span><strong>+ hinzufügen</strong></button>`;
 }
 
 const EDITORS = {
@@ -245,9 +247,9 @@ function renderVehicleWorkspace(vehicle, sensors) {
         ${fact("Variante", vehicle.variant)}
         ${fact("Baureihe", vehicle.generation)}
         ${fact("Baujahr", years(vehicle))}
+        ${renderKeyNumbers(vehicle)}
       </div>
       <div class="description-box"><span>Beschreibung</span><p>${esc(vehicle.description || "Keine Beschreibung hinterlegt.")}</p></div>
-      ${renderKeyNumbers(vehicle)}
     </section>
 
     <section class="sensor-management-section">

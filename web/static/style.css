@@ -356,13 +356,15 @@ button.primary,.database-page button.secondary,.database-page button.danger,.res
 .fact strong {overflow-wrap:anywhere;}
 .description-box {margin-top:14px;border:1px solid #e2e8f0;border-radius:10px;padding:16px;}
 .description-box p {margin:7px 0 0;white-space:pre-wrap;}
-.key-chip-row {display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:9px;}
-.key-chip {display:inline-flex;align-items:stretch;border:1px solid var(--green-border);border-radius:8px;background:#f3f8f5;overflow:hidden;}
-.key-chip button {margin:0;border:0;border-radius:0;background:transparent;font:inherit;cursor:pointer;}
-.key-chip-edit {padding:5px 9px;color:var(--text-primary);font-weight:700;font-variant-numeric:tabular-nums;}
-.key-chip-delete {padding:5px 8px;color:#a33a32;border-left:1px solid var(--green-border) !important;font-weight:700;}
-.key-chip button:hover:not(:disabled) {background:#e3f0e8;}
-.key-chip button:disabled {cursor:default;}
+.key-fact>span {display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.key-fact button,.key-fact-add {margin:0;border:0;background:transparent;font:inherit;color:inherit;cursor:pointer;text-align:left;}
+.key-fact .key-fact-value {padding:0;font-weight:700;color:var(--text-primary);}
+.key-fact-value:hover:not(:disabled) {color:var(--green-primary);text-decoration:underline;}
+.key-fact-delete {padding:0 2px;color:#a33a32 !important;font-size:16px;line-height:1;}
+.vehicle-data-section>.facts-grid .key-fact-add {border-bottom:1px dashed var(--green-border);background:transparent;}
+.key-fact-add strong {color:var(--green-primary);}
+.key-fact-add:hover:not(:disabled) {background:#f3f8f5;}
+.key-fact button:disabled,.key-fact-add:disabled {cursor:default;}
 .danger-zone {border-top:1px solid #e4e9f0;margin-top:26px;padding-top:20px;}
 .entity-card {border:1px solid var(--green-border);border-radius:13px;padding:20px;margin-top:16px;background:#fff;}
 .entity-header {align-items:flex-start;margin-bottom:18px;}
