@@ -867,3 +867,4 @@ button.primary,.database-page button.secondary,.database-page button.danger,.res
     .results-page #measurementDetail .archive-metrics .metric-card:nth-child(3n),
     .results-page #measurementDetail .archive-metadata .fact:nth-child(3n) {border-right:0;}
 }
+.database-page #detailContent .vehicle-data-section > .facts-grid .fact {background:transparent;}
