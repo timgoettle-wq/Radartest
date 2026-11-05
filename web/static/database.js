@@ -381,7 +381,16 @@ function renderDtcSection(dtcs) {
       <thead><tr><th>Service</th><th>Subfunktion</th><th>Statusmaske</th><th>Status</th><th><span class="visually-hidden">Aktionen</span></th></tr></thead>
       <tbody>${dtcs.map(dtc => `<tr><td class="mono"><strong>${hex(dtc.service)}</strong></td><td class="mono">${hex(dtc.subfunction)}</td><td class="mono">${hex(dtc.status_mask)}</td><td>${dtc.enabled ? "aktiv" : "inaktiv"}</td><td class="row-action">${action("Bearbeiten", "editDtc", dtc.id, "link-button")}</td></tr>`).join("")}</tbody></table></div>`;
   }
-  if (LAYOUT_VARIANT === "values" || LAYOUT_VARIANT === "collapsed") {
+  if (LAYOUT_VARIANT === "collapsed") {
+    return `<div class="disclosure-list">${dtcs.map(dtc => `<details class="disclosure-row">
+      <summary><strong>Service ${hex(dtc.service)}</strong><span class="mono">Subfunktion ${hex(dtc.subfunction)}</span><code>Statusmaske ${hex(dtc.status_mask)}</code><span class="muted">${dtc.enabled ? "aktiv" : "inaktiv"}</span></summary>
+      <div class="disclosure-body">
+        <p class="muted">Fehlerspeicher wird mit Service ${hex(dtc.service)}, Subfunktion ${hex(dtc.subfunction)} und Statusmaske ${hex(dtc.status_mask)} gelesen. Die Abfrage ist ${dtc.enabled ? "aktiv" : "inaktiv"}.</p>
+        <div class="disclosure-actions">${action("DTC-Abfrage bearbeiten", "editDtc", dtc.id, "link-button")}</div>
+      </div>
+    </details>`).join("")}</div>`;
+  }
+  if (LAYOUT_VARIANT === "values") {
     return `<div class="value-rows">${dtcs.map(dtc => `<div class="value-row">
       <div class="value-row-values"><code class="lead-code">Service ${hex(dtc.service)}</code></div>
       <div class="value-row-meta"><strong>Subfunktion ${hex(dtc.subfunction)}</strong><span>Statusmaske ${hex(dtc.status_mask)} · ${dtc.enabled ? "aktiv" : "inaktiv"}</span></div>
