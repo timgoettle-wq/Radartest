@@ -86,6 +86,28 @@ class DatabaseEditorTests(unittest.TestCase):
         self.assertEqual(keys, [(1, "1313", "BPK")])
         self.assertEqual(data["vehicles"]["rows"][1]["description"], "Alte Angabe: TSN XYZ")
 
+    def test_vehicle_dialog_saves_key_numbers(self):
+        payload = dict(manufacturer="Ford", model="Kuga", variant=None, generation=None,
+                       year_from=2020, year_to=None, description=None,
+                       key_numbers=[{"hsn": "8566", "tsn": "bkx"}, {"hsn": "8566", "tsn": "BKX"}, {"hsn": "", "tsn": ""}])
+        created = self.client.post("/api/database/vehicles", json=payload)
+        self.assertEqual(created.status_code, 200)
+        vehicle_id = created.json()["id"]
+        keys = lambda: [(k["hsn"], k["tsn"]) for k in self.client.get("/api/database").json()["tables"]["vehicle_key_numbers"]["rows"] if k["vehicle_id"] == vehicle_id]
+        self.assertEqual(keys(), [("8566", "BKX")])
+        url = "/api/database/vehicles/" + str(vehicle_id)
+        payload["key_numbers"] = [{"hsn": "8566", "tsn": "BKY"}, {"hsn": "0603", "tsn": "ABC"}]
+        self.assertEqual(self.client.put(url, json=payload).status_code, 200)
+        self.assertEqual(keys(), [("8566", "BKY"), ("0603", "ABC")])
+        payload["key_numbers"] = [{"hsn": "8566", "tsn": ""}]
+        response = self.client.put(url, json=payload)
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("zusammen", response.json()["detail"])
+        self.assertEqual(keys(), [("8566", "BKY"), ("0603", "ABC")])
+        # Fahrzeug löschen nimmt seine HSN/TSN mit.
+        self.assertEqual(self.client.delete(url).status_code, 200)
+        self.assertEqual(keys(), [])
+
     def test_hsn_tsn_validation(self):
         base = dict(vehicle_id=1, hsn="1313", tsn="BPK")
         url = "/api/database/vehicle_key_numbers"
