@@ -823,3 +823,47 @@ button.primary,.database-page button.secondary,.database-page button.danger,.res
 }
 .database-page .dialog-actions .dialog-delete {margin-right:auto;background:#fff;color:#a32c32;border:1px solid #d7aeb0;}
 .database-page .dialog-actions .dialog-delete:hover {background:#fbefef;}
+
+
+/* Ergebnisdetails im selben ruhigen Stil wie das Fahrzeugdetail der
+   Datenpflege: weiße Karten mit dünnem Rahmen, keine getönten Kopfbänder,
+   keine grünen Seitenbalken. */
+.results-page #runDetail .run-check-grid > .archive-card,
+.results-page #runDetail > .measurements-card,
+.results-page #measurementDetail .archive-metrics,
+.results-page #measurementDetail .archive-metadata {
+    background:#fff;
+    border:1px solid var(--green-border);
+    border-radius:13px;
+}
+.results-page #runDetail .archive-card > .section-title {
+    margin:0 0 16px;
+    padding:0 0 14px;
+    background:transparent;
+    border-bottom:1px solid var(--green-border);
+}
+.results-page #runDetail .archive-card details {
+    background:#fff;
+    border:1px solid #dbe5df;
+    border-radius:6px;
+}
+.results-page #runDetail .measurements-card .table-scroll {
+    border:1px solid #dbe5df;
+    border-radius:6px;
+}
+.results-page #measurementDetail .archive-metrics .metric-card,
+.results-page #measurementDetail .archive-metadata .fact {
+    border-right-color:#e6ece8;
+}
+.results-page #measurementDetail .archive-chart-card {
+    border-radius:13px;
+}
+@media(max-width:650px) {
+    .results-page #runDetail .archive-card > .section-title {margin:0 0 14px;padding:0 0 12px;}
+    .results-page #measurementDetail .archive-metrics .metric-card,
+    .results-page #measurementDetail .archive-metadata .fact {border-bottom-color:#e6ece8;}
+}
+@media(min-width:901px) {
+    .results-page #measurementDetail .archive-metrics .metric-card:nth-child(3n),
+    .results-page #measurementDetail .archive-metadata .fact:nth-child(3n) {border-right:0;}
+}
