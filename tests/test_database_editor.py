@@ -41,7 +41,7 @@ class DatabaseEditorTests(unittest.TestCase):
         self.assertEqual(row["variant"], "E 220 d")
         self.assertTrue(list((database.DB_PATH.parent / "backups").glob("*.db")))
         for hsn, tsn in (("0710", "bpk"), ("0710", "BPL")):
-            key = dict(vehicle_id=row["id"], hsn=hsn, tsn=tsn, note=None)
+            key = dict(vehicle_id=row["id"], hsn=hsn, tsn=tsn)
             self.assertEqual(self.client.post("/api/database/vehicle_key_numbers", json=key).status_code, 200)
         keys = self.client.get("/api/database").json()["tables"]["vehicle_key_numbers"]["rows"]
         self.assertEqual([(k["hsn"], k["tsn"]) for k in keys if k["vehicle_id"] == row["id"]],
@@ -87,7 +87,7 @@ class DatabaseEditorTests(unittest.TestCase):
         self.assertEqual(data["vehicles"]["rows"][1]["description"], "Alte Angabe: TSN XYZ")
 
     def test_hsn_tsn_validation(self):
-        base = dict(vehicle_id=1, hsn="1313", tsn="BPK", note=None)
+        base = dict(vehicle_id=1, hsn="1313", tsn="BPK")
         url = "/api/database/vehicle_key_numbers"
         self.assertEqual(self.client.post(url, json={**base, "hsn": "71"}).status_code, 422)
         self.assertEqual(self.client.post(url, json={**base, "tsn": "BPK00012"}).status_code, 422)

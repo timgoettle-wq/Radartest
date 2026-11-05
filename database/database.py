@@ -76,7 +76,6 @@ def _ensure_vehicle_columns(connection):
             vehicle_id INTEGER NOT NULL,
             hsn TEXT NOT NULL,
             tsn TEXT NOT NULL,
-            note TEXT,
 
             UNIQUE(vehicle_id, hsn, tsn),
 

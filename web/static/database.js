@@ -45,7 +45,7 @@ const FIELD_INFO = {
 // Reihenfolge der Eingabefelder, unabhängig von der Spaltenreihenfolge in der DB.
 const COLUMN_ORDER = {
   vehicles:["manufacturer", "model", "variant", "generation", "year_from", "year_to", "description"],
-  vehicle_key_numbers:["hsn", "tsn", "note"]
+  vehicle_key_numbers:["hsn", "tsn"]
 };
 
 function orderedColumns(tableName, columns) {
@@ -57,10 +57,9 @@ function orderedColumns(tableName, columns) {
 
 function renderKeyNumbers(vehicle) {
   const keys = related("vehicle_key_numbers", "vehicle_id", vehicle.id);
-  const list = keys.map(key => `<div class="list-row"><div><strong>HSN ${esc(key.hsn)} · TSN ${esc(key.tsn)}</strong>${key.note ? `<span>${esc(key.note)}</span>` : ""}</div><div class="button-row">${action("Bearbeiten", "editKeyNumber", key.id, "link-button")}${action("Löschen", "deleteKeyNumber", key.id, "link-button danger-text")}</div></div>`).join("");
-  return `<div class="subsection key-numbers">
-      <div class="section-heading"><div><h3>HSN / TSN</h3><p>Schlüsselnummern aus dem Fahrzeugschein. Ein Modell kann mehrere haben.</p></div>${action("+ HSN/TSN", "newKeyNumber", vehicle.id)}</div>
-      ${list || '<p class="empty-inline">Noch keine Schlüsselnummern hinterlegt.</p>'}
+  const chips = keys.map(key => `<span class="key-chip"><button class="key-chip-edit" data-action="editKeyNumber" data-id="${Number(key.id)}" title="Bearbeiten">${esc(key.hsn)} / ${esc(key.tsn)}</button><button class="key-chip-delete" data-action="deleteKeyNumber" data-id="${Number(key.id)}" title="Löschen" aria-label="HSN/TSN ${esc(key.hsn)} / ${esc(key.tsn)} löschen">×</button></span>`).join("");
+  return `<div class="description-box key-numbers"><span>HSN / TSN</span>
+      <div class="key-chip-row">${chips}${action("+ HSN/TSN", "newKeyNumber", vehicle.id, "small-button")}</div>
     </div>`;
 }
 
@@ -190,7 +189,7 @@ function renderVehicleList() {
   const year = Number($("yearFilter").value) || null;
   const vehicles = rows("vehicles").filter(vehicle => {
     const text = [vehicle.manufacturer, vehicle.model, vehicle.variant, vehicle.generation, vehicle.description,
-      ...related("vehicle_key_numbers", "vehicle_id", vehicle.id).flatMap(key => [key.hsn, key.tsn, key.note])].join(" ").toLowerCase();
+      ...related("vehicle_key_numbers", "vehicle_id", vehicle.id).flatMap(key => [key.hsn, key.tsn])].join(" ").toLowerCase();
     const yearMatches = !year || ((!vehicle.year_from || vehicle.year_from <= year) && (!vehicle.year_to || vehicle.year_to >= year));
     return (!query || text.includes(query)) && (!manufacturer || vehicle.manufacturer === manufacturer) && yearMatches;
   }).sort((left, right) =>
@@ -326,9 +325,7 @@ function openEditor(kind, row=null, fixed={}) {
   $("editor").replaceChildren();
   const table = state.tables[config.table];
   orderedColumns(config.table, table.columns).filter(column => column.name !== "id" && !(column.name in fixed) && !(kind === "identification" && column.name === "identifier_key") && !(kind === "parameter" && column.name === "name")).forEach(column => {
-    const info = (kind === "keyNumber" && column.name === "note")
-      ? {label:"Notiz, z. B. Motor oder Ausstattung"}
-      : FIELD_INFO[column.name] || {label:column.name};
+    const info = FIELD_INFO[column.name] || {label:column.name};
     const wrapper = document.createElement("label");
     wrapper.className = info.textarea ? "wide" : "";
     const caption = document.createElement("span");
