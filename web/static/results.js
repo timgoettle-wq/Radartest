@@ -158,10 +158,6 @@ async function loadResults() {
     }
 }
 
-// Vergleichsvarianten der Ergebnisliste (?list=status|vehicle|day).
-// Nach Tims Wahl bleibt nur eine.
-const LIST_VARIANT = new URLSearchParams(location.search).get("list") || "status";
-
 function escapeHtml(value) {
     return String(value ?? "").replace(/[&<>"']/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char]));
 }
@@ -170,8 +166,8 @@ function badgeHtml(status) {
     return `<span class="status-pill ${statusClass(status)}">${escapeHtml(statusLabels[status] || status || "Unbekannt")}</span>`;
 }
 
-function runStatusHtml(status) {
-    return `<span class="run-status ${statusClass(status)}"><i aria-hidden="true"></i>${escapeHtml(statusLabels[status] || status || "Unbekannt")}</span>`;
+function runStatusHtml(status, label = null) {
+    return `<span class="run-status ${statusClass(status)}"><i aria-hidden="true"></i>${escapeHtml(label ?? statusLabels[status] ?? status ?? "Unbekannt")}</span>`;
 }
 
 function measurementText(run) {
@@ -180,59 +176,11 @@ function measurementText(run) {
     return `${run.test_count} · ${types.join(", ")}`;
 }
 
-function formatTime(value) {
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? "–" : date.toLocaleTimeString("de-DE", {hour:"2-digit", minute:"2-digit"});
-}
-
-function formatDay(value) {
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? "Ohne Datum" : date.toLocaleDateString("de-DE", {weekday:"long", day:"numeric", month:"long", year:"numeric"});
-}
-
 function runRow(run, cells) {
     return `<tr class="clickable-table-row" data-run-id="${escapeHtml(run.run_id)}" tabindex="0" role="button">${cells.map(cell => `<td>${cell}</td>`).join("")}</tr>`;
 }
 
-function groupBy(runs, keyOf) {
-    const groups = new Map();
-    for (const run of runs) {
-        const key = keyOf(run);
-        if (!groups.has(key)) groups.set(key, []);
-        groups.get(key).push(run);
-    }
-    return groups;
-}
-
 function renderResultList(runs) {
-    if (LIST_VARIANT === "vehicle") {
-        const groups = [...groupBy(runs, run => run.vehicle_name)].sort((left, right) => left[0].localeCompare(right[0], "de"));
-        return groups.map(([vehicle, items]) => `<section class="result-group">
-            <div class="result-group-head"><h2>${escapeHtml(vehicle)}</h2><span>${items.length === 1 ? "1 TestRun" : `${items.length} TestRuns`}</span></div>
-            <div class="table-scroll results-table-wrap"><table class="results-table">
-                <thead><tr><th>Datum</th><th>Status</th><th>Messungen</th><th>Quick Check</th><th>Precheck</th><th>TestRun-ID</th></tr></thead>
-                <tbody>${items.map(run => runRow(run, [
-                    escapeHtml(formatDate(run.start_time)), runStatusHtml(run.status), escapeHtml(measurementText(run)),
-                    badgeHtml(run.quick_check_status), badgeHtml(run.precheck_status), `<code>${escapeHtml(run.run_id)}</code>`
-                ])).join("")}</tbody>
-            </table></div>
-        </section>`).join("");
-    }
-    if (LIST_VARIANT === "day") {
-        const groups = groupBy(runs, run => formatDay(run.start_time));
-        return [...groups].map(([day, items]) => `<section class="result-group">
-            <div class="result-group-head"><h2>${escapeHtml(day)}</h2><span>${items.length === 1 ? "1 TestRun" : `${items.length} TestRuns`}</span></div>
-            <div class="table-scroll results-table-wrap"><table class="results-table">
-                <thead><tr><th>Uhrzeit</th><th>Fahrzeug</th><th>Status</th><th>Messungen</th><th>Quick Check</th><th>Precheck</th></tr></thead>
-                <tbody>${items.map(run => runRow(run, [
-                    `<span class="mono">${escapeHtml(formatTime(run.start_time))}</span>`,
-                    `<strong>${escapeHtml(run.vehicle_name)}</strong><small>${escapeHtml(run.run_id)}</small>`,
-                    runStatusHtml(run.status), escapeHtml(measurementText(run)),
-                    badgeHtml(run.quick_check_status), badgeHtml(run.precheck_status)
-                ])).join("")}</tbody>
-            </table></div>
-        </section>`).join("");
-    }
     return `<div class="table-scroll results-table-wrap"><table class="results-table">
         <thead><tr><th>Status</th><th>Datum</th><th>Fahrzeug</th><th>Messungen</th><th>Quick Check</th><th>Precheck</th></tr></thead>
         <tbody>${runs.map(run => runRow(run, [
@@ -271,6 +219,7 @@ async function openRun(runId, push = true) {
     try {
         const data = await apiRequest("/api/results/" + encodeURIComponent(runId));
         resultState.currentRun = data;
+        resultState.measurementLimit = MEASUREMENT_PAGE_SIZE;
         renderRun(data);
         showView("runDetail");
         if (push) setLocation(runId);
@@ -328,6 +277,21 @@ function renderRun(data) {
     renderQuickCheck(run.quick_check, summary.quick_check_status);
     renderPrecheck(run.precheck, summary.precheck_status);
     renderMeasurements(summary.run_id, run.tests || []);
+    if (RUN_VARIANT === "compact") {
+        document.querySelectorAll("#runDetail .run-check-grid > .archive-card").forEach(card => {
+            card.classList.remove("open");
+            const title = card.querySelector(".section-title");
+            if (!title.querySelector(".card-toggle")) {
+                const toggle = textElement("button", "Details", "link-button card-toggle");
+                toggle.type = "button";
+                toggle.addEventListener("click", () => {
+                    card.classList.toggle("open");
+                    toggle.textContent = card.classList.contains("open") ? "Ausblenden" : "Details";
+                });
+                title.append(toggle);
+            }
+        });
+    }
 }
 
 function renderQuickCheck(quickCheck, status) {
@@ -413,26 +377,128 @@ function renderPrecheck(precheck, status) {
     content.append(values);
 }
 
-function renderMeasurements(runId, tests) {
-    const body = $("measurementsTableBody");
-    body.replaceChildren();
-    $("measurementCount").textContent = tests.length + " Messung(en)";
-    $("emptyMeasurements").hidden = tests.length > 0;
+// Vergleichsvarianten TestRun-Detail (?run=grouped|compact|overview).
+// Ohne Parameter bleibt die bisherige Ansicht. Nach Tims Wahl bleibt eine.
+const RUN_VARIANT = new URLSearchParams(location.search).get("run") || "";
+const MEASUREMENT_PAGE_SIZE = 50;
 
-    for (const test of tests) {
-        const row = body.insertRow();
-        row.insertCell().textContent = testTypeLabel(test.type);
-        row.insertCell().textContent = parameterText(test);
-        row.insertCell().append(badge(test.status));
-        row.insertCell().textContent = formatDate(test.start_time);
-        row.insertCell().textContent = test.sample_count ?? "–";
-        const actionCell = row.insertCell();
-        const button = textElement("button", "Messung öffnen", "small-button");
-        button.type = "button";
-        button.disabled = !test.log_file;
-        button.addEventListener("click", () => openMeasurement(runId, String(test.test_id)));
-        actionCell.append(button);
+function measurementRow(runId, test, columns) {
+    const cells = {
+        nr: `<span class="mono">${escapeHtml(test.test_id)}</span>`,
+        type: escapeHtml(testTypeLabel(test.type)),
+        parameter: escapeHtml(parameterText(test)),
+        status: runStatusHtml(test.status),
+        badge: badgeHtml(test.status),
+        start: escapeHtml(formatDate(test.start_time)),
+        time: `<span class="mono">${escapeHtml(formatClock(test.start_time))}</span>`,
+        samples: `<span class="mono">${escapeHtml(test.sample_count ?? "–")}</span>`,
+        open: test.log_file
+            ? `<button class="small-button" type="button" data-open-test="${escapeHtml(test.test_id)}">Messung öffnen</button>`
+            : `<button class="small-button" type="button" disabled>Messung öffnen</button>`
+    };
+    const clickable = RUN_VARIANT === "compact" && test.log_file;
+    return `<tr${clickable ? ` class="clickable-table-row" data-open-test="${escapeHtml(test.test_id)}" tabindex="0" role="button"` : ""}>${columns.map(column => `<td class="col-${column}">${cells[column]}</td>`).join("")}</tr>`;
+}
+
+function measurementTable(runId, tests, columns, labels) {
+    return `<div class="table-scroll"><table class="results-table measurements-table">
+        <thead><tr>${labels.map(label => `<th>${escapeHtml(label)}</th>`).join("")}</tr></thead>
+        <tbody>${tests.map(test => measurementRow(runId, test, columns)).join("")}</tbody>
+    </table></div>`;
+}
+
+function formatClock(value) {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? "–" : date.toLocaleTimeString("de-DE");
+}
+
+function formatDuration(startValue, endValue) {
+    const start = new Date(startValue), end = new Date(endValue);
+    const seconds = Math.round((end - start) / 1000);
+    if (!Number.isFinite(seconds) || seconds < 0) return "–";
+    const hours = Math.floor(seconds / 3600), minutes = Math.floor((seconds % 3600) / 60);
+    return hours ? `${hours} h ${minutes} min` : `${minutes} min ${seconds % 60} s`;
+}
+
+function statusCounts(tests) {
+    const counts = {};
+    for (const test of tests) counts[test.status] = (counts[test.status] || 0) + 1;
+    return counts;
+}
+
+function statusSummaryText(tests) {
+    const counts = statusCounts(tests);
+    const entries = Object.entries(counts);
+    if (entries.length === 1) {
+        return "alle " + (statusLabels[entries[0][0]] || entries[0][0]).toLowerCase();
     }
+    return entries.map(([status, count]) => `${count} ${(statusLabels[status] || status).toLowerCase()}`).join(" · ");
+}
+
+function worstStatus(tests) {
+    const order = ["failed", "completed_with_errors", "aborted", "running", "finished"];
+    return order.find(status => tests.some(test => test.status === status)) || tests[0]?.status;
+}
+
+function renderGroupedMeasurements(runId, tests) {
+    const groups = new Map();
+    for (const test of tests) {
+        const key = testTypeLabel(test.type) + "|" + parameterText(test);
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(test);
+    }
+    return `<div class="disclosure-list measurement-groups">${[...groups].map(([key, items]) => {
+        const [type, parameter] = key.split("|");
+        return `<details class="disclosure-row">
+            <summary><strong>${escapeHtml(type)}</strong><span>${escapeHtml(parameter)}</span><span class="mono">${items.length === 1 ? "1 Messung" : `${items.length} Messungen`}</span>${runStatusHtml(worstStatus(items), statusSummaryText(items))}</summary>
+            <div class="disclosure-body">${measurementTable(runId, items, ["nr", "start", "samples", "badge", "open"], ["Nr.", "Start", "Messpunkte", "Status", ""])}</div>
+        </details>`;
+    }).join("")}</div>`;
+}
+
+function renderCompactMeasurements(runId, tests) {
+    const typeFilter = $("measurementTypeFilter")?.value || "";
+    const statusFilter = $("measurementStatusFilter")?.value || "";
+    const visible = tests.filter(test => (!typeFilter || test.type === typeFilter) && (!statusFilter || test.status === statusFilter));
+    const statuses = Object.keys(statusCounts(tests));
+    const filters = `<div class="measurement-filters">
+        <label><span>Prüfart</span><select id="measurementTypeFilter"><option value="">Alle</option><option value="static"${typeFilter === "static" ? " selected" : ""}>Statisch</option><option value="dynamic"${typeFilter === "dynamic" ? " selected" : ""}>Dynamisch</option></select></label>
+        <label><span>Status</span><select id="measurementStatusFilter"><option value="">Alle</option>${statuses.map(status => `<option value="${escapeHtml(status)}"${statusFilter === status ? " selected" : ""}>${escapeHtml(statusLabels[status] || status)}</option>`).join("")}</select></label>
+        <span class="muted">${visible.length} von ${tests.length} Messungen</span>
+    </div>`;
+    return filters + measurementTable(runId, visible, ["nr", "type", "parameter", "time", "samples", "status"], ["Nr.", "Prüfung", "Parameter", "Start", "Messpunkte", "Status"]);
+}
+
+function renderOverviewMeasurements(runId, tests, run) {
+    const counts = statusCounts(tests);
+    const samples = tests.reduce((sum, test) => sum + (Number(test.sample_count) || 0), 0);
+    const shown = Math.min(tests.length, resultState.measurementLimit || MEASUREMENT_PAGE_SIZE);
+    const stats = `<div class="run-overview-stats">
+        <div class="fact"><span>Messungen</span><strong>${tests.length}</strong></div>
+        <div class="fact"><span>Abgeschlossen</span><strong>${counts.finished || 0}</strong></div>
+        <div class="fact"><span>Abgebrochen / Fehler</span><strong class="${(counts.aborted || counts.failed || counts.completed_with_errors) ? "warning-text" : ""}">${(counts.aborted || 0) + (counts.failed || 0) + (counts.completed_with_errors || 0)}</strong></div>
+        <div class="fact"><span>Messpunkte gesamt</span><strong>${samples.toLocaleString("de-DE")}</strong></div>
+        <div class="fact"><span>Dauer</span><strong>${escapeHtml(formatDuration(run.start_time, run.end_time))}</strong></div>
+    </div>`;
+    const more = shown < tests.length
+        ? `<div class="measurement-more"><span class="muted">${shown} von ${tests.length} Messungen angezeigt</span><button class="secondary" type="button" id="showMoreMeasurements">Weitere ${Math.min(MEASUREMENT_PAGE_SIZE, tests.length - shown)} anzeigen</button></div>`
+        : "";
+    return stats + measurementTable(runId, tests.slice(0, shown), ["nr", "type", "parameter", "badge", "start", "samples", "open"], ["Nr.", "Prüfung", "Parameter", "Status", "Start", "Messpunkte", ""]) + more;
+}
+
+function renderMeasurements(runId, tests) {
+    const list = $("measurementsList");
+    $("measurementCount").textContent = tests.length === 1 ? "1 Messung" : tests.length + " Messungen";
+    $("emptyMeasurements").hidden = tests.length > 0;
+    $("runDetail").dataset.variant = RUN_VARIANT;
+    if (!tests.length) {
+        list.innerHTML = "";
+        return;
+    }
+    if (RUN_VARIANT === "grouped") list.innerHTML = renderGroupedMeasurements(runId, tests);
+    else if (RUN_VARIANT === "compact") list.innerHTML = renderCompactMeasurements(runId, tests);
+    else if (RUN_VARIANT === "overview") list.innerHTML = renderOverviewMeasurements(runId, tests, resultState.currentRun.run);
+    else list.innerHTML = measurementTable(runId, tests, ["type", "parameter", "badge", "start", "samples", "open"], ["Prüfung", "Parameter", "Status", "Start", "Messpunkte", ""]);
 }
 
 async function openMeasurement(runId, testId, push = true) {
@@ -583,6 +649,26 @@ async function restoreFromLocation() {
     if (testId) await openMeasurement(runId, testId, false);
 }
 
+$("measurementsList").addEventListener("click", event => {
+    const target = event.target.closest("[data-open-test]");
+    const runId = resultState.currentRun?.summary.run_id;
+    if (target && runId) openMeasurement(runId, target.dataset.openTest);
+    if (event.target.id === "showMoreMeasurements") {
+        resultState.measurementLimit = (resultState.measurementLimit || MEASUREMENT_PAGE_SIZE) + MEASUREMENT_PAGE_SIZE;
+        renderMeasurements(runId, resultState.currentRun.run.tests || []);
+    }
+});
+$("measurementsList").addEventListener("keydown", event => {
+    const target = event.target.closest("tr[data-open-test]");
+    if (target && (event.key === "Enter" || event.key === " ")) {
+        event.preventDefault();
+        openMeasurement(resultState.currentRun.summary.run_id, target.dataset.openTest);
+    }
+});
+$("measurementsList").addEventListener("change", event => {
+    if (!["measurementTypeFilter", "measurementStatusFilter"].includes(event.target.id)) return;
+    renderMeasurements(resultState.currentRun.summary.run_id, resultState.currentRun.run.tests || []);
+});
 $("resultsList").addEventListener("click", event => {
     const row = event.target.closest("[data-run-id]");
     if (row) openRun(row.dataset.runId);
