@@ -312,19 +312,123 @@ function renderSensorWorkspace(sensor) {
 
     <div class="subsection">
       <div class="section-heading"><div><h3>Hardware- und Softwarestände</h3><p>Auslesbare Identifikationsmerkmale und bekannte Serienwerte.</p></div>${action("+ Kennung", "newIdentification", sensor.id)}</div>
-      ${identifications.length ? identifications.map(renderIdentification).join("") : '<p class="empty-inline">Noch keine Identifikationsmerkmale hinterlegt.</p>'}
+      ${renderIdentificationSection(identifications)}
     </div>
 
     <div class="subsection">
       <div class="section-heading"><div><h3>DTC-Abfrage</h3><p>Fehlerspeicherabfrage dieses Radarsensors.</p></div>${action("+ DTC-Abfrage", "newDtc", sensor.id)}</div>
-      ${dtcs.map(dtc => `<div class="list-row nested-card dtc-config-card"><div><strong>Service ${hex(dtc.service)}</strong><span>Subfunktion ${hex(dtc.subfunction)} · Statusmaske ${hex(dtc.status_mask)} · ${dtc.enabled ? "aktiv" : "inaktiv"}</span></div><div class="button-row">${action("Bearbeiten", "editDtc", dtc.id, "link-button")}</div></div>`).join("") || '<p class="empty-inline">Keine DTC-Abfrage konfiguriert.</p>'}
+      ${renderDtcSection(dtcs)}
     </div>
 
     <div class="subsection diagnosis-subsection">
       <div class="section-heading"><div><h3>Diagnosedaten</h3><p>Diagnoseabfragen und zugehörige Signalfelder.</p></div>${action("+ Diagnoseabfrage", "newParameter", sensor.id)}</div>
-      ${parameters.length ? parameters.map(renderParameter).join("") : '<p class="empty-inline">Noch keine Diagnoseabfragen hinterlegt.</p>'}
+      ${renderParameterSection(parameters)}
     </div>
   </article>`;
+}
+
+
+// Variantenauswahl (nur für den Vergleich, wird nach Tims Wahl entfernt).
+const LAYOUT_VARIANT = new URLSearchParams(location.search).get("layout") || "cards";
+
+function renderIdentificationSection(identifications) {
+  if (!identifications.length) return '<p class="empty-inline">Noch keine Identifikationsmerkmale hinterlegt.</p>';
+  if (LAYOUT_VARIANT === "table") {
+    return `<div class="config-table-wrap"><table class="config-table">
+      <thead><tr><th>Kennung</th><th>DID</th><th>Datentyp</th><th>Referenzwerte</th><th><span class="visually-hidden">Aktionen</span></th></tr></thead>
+      <tbody>${identifications.map(item => {
+        const references = related("accepted_identification_values", "identification_parameter_id", item.id);
+        return `<tr>
+          <td><strong>${esc(item.label)}</strong></td>
+          <td class="mono">${hex(item.did)}</td>
+          <td>${esc(item.data_type)}</td>
+          <td><div class="reference-values">${references.map(ref => `<button class="reference-value" data-action="editReference" data-id="${Number(ref.id)}" title="Referenzwert bearbeiten"><code>${esc(ref.value)}</code>${ref.note ? `<span>${esc(ref.note)}</span>` : ""}</button>`).join("") || '<span class="muted">Kein Referenzwert</span>'}${action("+ Referenzwert", "newReference", item.id, "link-button add-link")}</div></td>
+          <td class="row-action">${action("Bearbeiten", "editIdentification", item.id, "link-button")}</td>
+        </tr>`;
+      }).join("")}</tbody></table></div>`;
+  }
+  if (LAYOUT_VARIANT === "values") {
+    return `<div class="value-rows">${identifications.map(item => {
+      const references = related("accepted_identification_values", "identification_parameter_id", item.id);
+      return `<div class="value-row">
+        <div class="value-row-values">${references.map(ref => `<button class="reference-value lead" data-action="editReference" data-id="${Number(ref.id)}" title="${esc(ref.note || "Referenzwert bearbeiten")}"><code>${esc(ref.value)}</code></button>`).join("") || '<span class="muted">Kein Referenzwert</span>'}</div>
+        <div class="value-row-meta"><strong>${esc(item.label)}</strong><span>DID ${hex(item.did)} · ${esc(item.data_type)}</span></div>
+        <div class="value-row-actions">${action("+ Wert", "newReference", item.id, "link-button add-link")}${action("Bearbeiten", "editIdentification", item.id, "link-button")}</div>
+      </div>`;
+    }).join("")}</div>`;
+  }
+  if (LAYOUT_VARIANT === "collapsed") {
+    return `<div class="disclosure-list">${identifications.map(item => {
+      const references = related("accepted_identification_values", "identification_parameter_id", item.id);
+      const first = references[0]?.value;
+      return `<details class="disclosure-row">
+        <summary><strong>${esc(item.label)}</strong><span class="mono">DID ${hex(item.did)}</span><code>${esc(first ?? "–")}</code><span class="muted">${references.length === 1 ? "1 Referenzwert" : `${references.length} Referenzwerte`}</span></summary>
+        <div class="disclosure-body">
+          <p class="muted">Datentyp ${esc(item.data_type)}</p>
+          ${references.map(ref => `<div class="reference-row"><div><code>${esc(ref.value)}</code>${ref.note ? `<span>${esc(ref.note)}</span>` : ""}</div><div class="button-row">${action("Bearbeiten", "editReference", ref.id, "link-button")}</div></div>`).join("")}
+          <div class="disclosure-actions">${action("+ Referenzwert", "newReference", item.id, "small-button")}${action("Kennung bearbeiten", "editIdentification", item.id, "link-button")}</div>
+        </div>
+      </details>`;
+    }).join("")}</div>`;
+  }
+  return identifications.map(renderIdentification).join("");
+}
+
+function renderDtcSection(dtcs) {
+  if (!dtcs.length) return '<p class="empty-inline">Keine DTC-Abfrage konfiguriert.</p>';
+  if (LAYOUT_VARIANT === "table") {
+    return `<div class="config-table-wrap"><table class="config-table">
+      <thead><tr><th>Service</th><th>Subfunktion</th><th>Statusmaske</th><th>Status</th><th><span class="visually-hidden">Aktionen</span></th></tr></thead>
+      <tbody>${dtcs.map(dtc => `<tr><td class="mono"><strong>${hex(dtc.service)}</strong></td><td class="mono">${hex(dtc.subfunction)}</td><td class="mono">${hex(dtc.status_mask)}</td><td>${dtc.enabled ? "aktiv" : "inaktiv"}</td><td class="row-action">${action("Bearbeiten", "editDtc", dtc.id, "link-button")}</td></tr>`).join("")}</tbody></table></div>`;
+  }
+  if (LAYOUT_VARIANT === "values" || LAYOUT_VARIANT === "collapsed") {
+    return `<div class="value-rows">${dtcs.map(dtc => `<div class="value-row">
+      <div class="value-row-values"><code class="lead-code">Service ${hex(dtc.service)}</code></div>
+      <div class="value-row-meta"><strong>Subfunktion ${hex(dtc.subfunction)}</strong><span>Statusmaske ${hex(dtc.status_mask)} · ${dtc.enabled ? "aktiv" : "inaktiv"}</span></div>
+      <div class="value-row-actions">${action("Bearbeiten", "editDtc", dtc.id, "link-button")}</div>
+    </div>`).join("")}</div>`;
+  }
+  return dtcs.map(dtc => `<div class="list-row nested-card dtc-config-card"><div><strong>Service ${hex(dtc.service)}</strong><span>Subfunktion ${hex(dtc.subfunction)} · Statusmaske ${hex(dtc.status_mask)} · ${dtc.enabled ? "aktiv" : "inaktiv"}</span></div><div class="button-row">${action("Bearbeiten", "editDtc", dtc.id, "link-button")}</div></div>`).join("");
+}
+
+function renderParameterSection(parameters) {
+  if (!parameters.length) return '<p class="empty-inline">Noch keine Diagnoseabfragen hinterlegt.</p>';
+  if (LAYOUT_VARIANT === "table") {
+    return parameters.map(parameter => {
+      const fields = related("signal_fields", "parameter_id", parameter.id);
+      return `<div class="parameter-block">
+        <div class="parameter-block-head"><strong>Diagnoseabfrage</strong><span class="mono">SID ${hex(parameter.service)} · DID/PID ${hex(parameter.did)}</span>${action("Bearbeiten", "editParameter", parameter.id, "link-button")}</div>
+        <div class="config-table-wrap"><table class="config-table">
+          <thead><tr><th>Signal</th><th>Byte</th><th>Länge</th><th>Datentyp</th><th>Faktor</th><th>Einheit</th><th><span class="visually-hidden">Aktionen</span></th></tr></thead>
+          <tbody>${fields.map(field => `<tr><td class="mono"><strong>${esc(field.name)}</strong></td><td class="mono num">${field.byte_offset}</td><td class="mono num">${field.byte_length}</td><td>${esc(field.data_type)}</td><td class="mono num">${field.factor}</td><td>${esc(field.unit || "–")}</td><td class="row-action">${action("Bearbeiten", "editField", field.id, "link-button")}</td></tr>`).join("") || '<tr><td colspan="7" class="muted">Noch kein Signalfeld definiert.</td></tr>'}</tbody>
+        </table></div>
+        ${action("+ Signalfeld", "newField", parameter.id, "link-button add-link")}
+      </div>`;
+    }).join("");
+  }
+  if (LAYOUT_VARIANT === "values") {
+    return parameters.map(parameter => {
+      const fields = related("signal_fields", "parameter_id", parameter.id);
+      return `<div class="parameter-block">
+        <div class="parameter-block-head"><strong>Diagnoseabfrage</strong><span class="mono">SID ${hex(parameter.service)} · DID/PID ${hex(parameter.did)}</span>${action("Bearbeiten", "editParameter", parameter.id, "link-button")}</div>
+        <div class="signal-grid">${fields.map(field => `<button class="signal-tile" data-action="editField" data-id="${Number(field.id)}" title="Signalfeld bearbeiten"><code>${esc(field.name)}</code><span>Byte ${field.byte_length > 1 ? `${field.byte_offset}–${field.byte_offset + field.byte_length - 1}` : field.byte_offset} · ${esc(field.data_type)} · ×${field.factor}${field.unit ? ` ${esc(field.unit)}` : ""}</span></button>`).join("")}</div>
+        ${action("+ Signalfeld", "newField", parameter.id, "link-button add-link")}
+      </div>`;
+    }).join("");
+  }
+  if (LAYOUT_VARIANT === "collapsed") {
+    return `<div class="disclosure-list">${parameters.map(parameter => {
+      const fields = related("signal_fields", "parameter_id", parameter.id);
+      return `<details class="disclosure-row">
+        <summary><strong>Diagnoseabfrage</strong><span class="mono">SID ${hex(parameter.service)} · DID/PID ${hex(parameter.did)}</span><code>${fields.map(field => esc(field.name)).slice(0, 3).join(", ")}${fields.length > 3 ? " …" : ""}</code><span class="muted">${fields.length === 1 ? "1 Signalfeld" : `${fields.length} Signalfelder`}</span></summary>
+        <div class="disclosure-body">
+          ${fields.map(field => `<div class="list-row"><div><strong>${esc(field.name)}</strong><span>Byte ${field.byte_offset}, ${field.byte_length} Byte · ${esc(field.data_type)} · Faktor ${field.factor}${field.unit ? ` · ${esc(field.unit)}` : ""}</span></div><div class="button-row">${action("Bearbeiten", "editField", field.id, "link-button")}</div></div>`).join("")}
+          <div class="disclosure-actions">${action("+ Signalfeld", "newField", parameter.id, "small-button")}${action("Abfrage bearbeiten", "editParameter", parameter.id, "link-button")}</div>
+        </div>
+      </details>`;
+    }).join("")}</div>`;
+  }
+  return parameters.map(renderParameter).join("");
 }
 
 function renderIdentification(item) {
