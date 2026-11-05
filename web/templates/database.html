@@ -33,14 +33,14 @@
 
   <section id="vehicleOverview" class="workspace">
     <div class="filter-bar">
-      <label class="search-field"><span>Suche</span><input id="search" type="search" placeholder="Hersteller, Modell oder Baureihe"></label>
+      <label class="search-field"><span>Suche</span><input id="search" type="search" placeholder="Hersteller, Modell, Variante, HSN …"></label>
       <label><span>Hersteller</span><select id="manufacturerFilter"><option value="">Alle Hersteller</option></select></label>
-      <label><span>Modelljahr</span><input id="yearFilter" type="number" min="1900" max="2200" placeholder="z. B. 2022"></label>
+      <label><span>Baujahr</span><input id="yearFilter" type="number" min="1900" max="2200" placeholder="z. B. 2022"></label>
       <button id="reload" class="secondary">Aktualisieren</button>
     </div>
     <div class="table-scroll results-table-wrap vehicle-table-wrap">
       <table class="results-table vehicle-table">
-        <thead><tr><th>Marke</th><th>Modell</th><th>Baureihe</th><th>Bauzeitraum</th></tr></thead>
+        <thead><tr><th>Marke</th><th>Modell</th><th>Variante</th><th>Baureihe</th><th>Baujahr</th><th>HSN / TSN</th></tr></thead>
         <tbody id="vehicleList"></tbody>
       </table>
     </div>

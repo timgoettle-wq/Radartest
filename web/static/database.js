@@ -26,7 +26,8 @@ function compareText(left, right) {
 }
 
 const FIELD_INFO = {
-  manufacturer:{label:"Hersteller"}, model:{label:"Modell"}, generation:{label:"Baureihe"},
+  manufacturer:{label:"Hersteller"}, model:{label:"Modell"}, variant:{label:"Variante"}, generation:{label:"Baureihe"},
+  hsn:{label:"HSN (Herstellerschlüssel, 4 Ziffern)"}, tsn:{label:"TSN (Typschlüssel, 3 Zeichen)"},
   year_from:{label:"Baujahr von"}, year_to:{label:"Baujahr bis"}, description:{label:"Beschreibung", textarea:true},
   name:{label:"Bezeichnung"}, interface:{label:"Schnittstelle", choices:[["can","CAN"]]},
   channel:{label:"CAN-Kanal"}, bitrate:{label:"Bitrate [bit/s]", choices:[[125000,"125.000"],[250000,"250.000"],[500000,"500.000"],[1000000,"1.000.000"]]}, request_id:{label:"CAN Request-ID"},
@@ -40,6 +41,23 @@ const FIELD_INFO = {
   subfunction:{label:"Subfunktion"}, status_mask:{label:"Statusmaske"}, factor:{label:"Skalierung / Faktor"},
   value_offset:{label:"Wert-Offset"}, unit:{label:"Einheit"}
 };
+
+// Reihenfolge der Eingabefelder, unabhängig von der Spaltenreihenfolge in der DB.
+const COLUMN_ORDER = {
+  vehicles:["manufacturer", "model", "variant", "generation", "year_from", "year_to", "hsn", "tsn", "description"]
+};
+
+function orderedColumns(tableName, columns) {
+  const order = COLUMN_ORDER[tableName];
+  if (!order) return columns;
+  const rank = name => { const index = order.indexOf(name); return index < 0 ? order.length : index; };
+  return [...columns].sort((left, right) => rank(left.name) - rank(right.name));
+}
+
+function keyNumbers(vehicle) {
+  if (!vehicle.hsn && !vehicle.tsn) return "—";
+  return `${vehicle.hsn || "—"} / ${vehicle.tsn || "—"}`;
+}
 
 const EDITORS = {
   vehicle:{table:"vehicles", title:"Fahrzeug", context:"Fahrzeugdaten"},
@@ -112,7 +130,7 @@ function years(vehicle) {
 }
 
 function vehicleName(vehicle) {
-  return [vehicle.manufacturer, vehicle.model, vehicle.generation].filter(Boolean).join(" ");
+  return [vehicle.manufacturer, vehicle.model, vehicle.variant, vehicle.generation].filter(Boolean).join(" ");
 }
 
 function action(label, name, id=null, style="secondary") {
@@ -165,12 +183,13 @@ function renderVehicleList() {
   const manufacturer = $("manufacturerFilter").value;
   const year = Number($("yearFilter").value) || null;
   const vehicles = rows("vehicles").filter(vehicle => {
-    const text = [vehicle.manufacturer, vehicle.model, vehicle.generation, vehicle.description].join(" ").toLowerCase();
+    const text = [vehicle.manufacturer, vehicle.model, vehicle.variant, vehicle.generation, vehicle.hsn, vehicle.tsn, vehicle.description].join(" ").toLowerCase();
     const yearMatches = !year || ((!vehicle.year_from || vehicle.year_from <= year) && (!vehicle.year_to || vehicle.year_to >= year));
     return (!query || text.includes(query)) && (!manufacturer || vehicle.manufacturer === manufacturer) && yearMatches;
   }).sort((left, right) =>
     compareText(left.manufacturer, right.manufacturer)
     || compareText(left.model, right.model)
+    || compareText(left.variant, right.variant)
     || compareText(left.generation, right.generation)
     || Number(left.id) - Number(right.id)
   );
@@ -179,8 +198,10 @@ function renderVehicleList() {
     return `<tr class="vehicle-table-row clickable-table-row" data-open-vehicle="${vehicle.id}" tabindex="0" role="button">
       <td><strong>${esc(vehicle.manufacturer || "—")}</strong></td>
       <td>${esc(vehicle.model || "—")}</td>
+      <td>${esc(vehicle.variant || "—")}</td>
       <td>${esc(vehicle.generation || "—")}</td>
       <td>${esc(years(vehicle))}</td>
+      <td>${esc(keyNumbers(vehicle))}</td>
     </tr>`;
   }).join("");
 }
@@ -216,8 +237,11 @@ function renderVehicleWorkspace(vehicle, sensors) {
       <div class="facts-grid">
         ${fact("Hersteller", vehicle.manufacturer)}
         ${fact("Modell", vehicle.model)}
+        ${fact("Variante", vehicle.variant)}
         ${fact("Baureihe", vehicle.generation)}
-        ${fact("Baujahr / Modelljahr", years(vehicle))}
+        ${fact("Baujahr", years(vehicle))}
+        ${fact("HSN", vehicle.hsn)}
+        ${fact("TSN", vehicle.tsn)}
       </div>
       <div class="description-box"><span>Beschreibung</span><p>${esc(vehicle.description || "Keine Beschreibung hinterlegt.")}</p></div>
     </section>
@@ -296,7 +320,7 @@ function openEditor(kind, row=null, fixed={}) {
   $("dialogTitle").textContent = `${row ? "Bearbeiten" : "Anlegen"}: ${config.title}`;
   $("editor").replaceChildren();
   const table = state.tables[config.table];
-  table.columns.filter(column => column.name !== "id" && !(column.name in fixed) && !(kind === "identification" && column.name === "identifier_key") && !(kind === "parameter" && column.name === "name")).forEach(column => {
+  orderedColumns(config.table, table.columns).filter(column => column.name !== "id" && !(column.name in fixed) && !(kind === "identification" && column.name === "identifier_key") && !(kind === "parameter" && column.name === "name")).forEach(column => {
     const info = FIELD_INFO[column.name] || {label:column.name};
     const wrapper = document.createElement("label");
     wrapper.className = info.textarea ? "wide" : "";
