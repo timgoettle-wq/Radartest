@@ -762,3 +762,130 @@ button.primary,.database-page button.secondary,.database-page button.danger,.res
 }
 
 @media (max-width:700px) {.sensor-selector-row {align-items:stretch;flex-direction:column;}.sensor-selector {min-width:0;}.sensor-selector-row button {width:100%;}.database-page .section-heading,.database-page .entity-header,.database-page .danger-zone {align-items:stretch;flex-direction:column;}}
+
+
+/* Ruhigeres Fahrzeugdetail: zwei Rahmenebenen statt vier, keine Seitenbalken.
+   Ebene 1: weiße Karten „Fahrzeugdaten“ und „Radarsensor“.
+   Ebene 2: einzelne Kennungen, DTC- und Diagnoseabfragen. */
+.database-page #detailContent > section > article.entity-card.sensor-workspace,
+.database-page #detailContent article.entity-card.sensor-workspace {
+    margin:0;
+    padding:0;
+    background:transparent;
+    border:0;
+    border-radius:0;
+}
+.database-page #detailContent article.entity-card.sensor-workspace > .entity-header {
+    margin:0 0 16px;
+    padding:20px 0 16px;
+    background:transparent;
+    border-top:1px solid var(--green-border);
+    border-bottom:0;
+}
+.database-page #detailContent .sensor-workspace > .compact-facts .fact {background:transparent;}
+.database-page #detailContent .sensor-workspace > .subsection {
+    margin-top:28px;
+    padding:20px 0 0;
+    background:transparent;
+    border:0;
+    border-top:1px solid var(--green-border);
+    border-radius:0;
+}
+.database-page #detailContent .nested-card,
+.database-page #detailContent .dtc-config-card {
+    margin:8px 0;
+    padding:12px 16px;
+    background:#fff;
+    border:1px solid #dbe5df;
+    border-radius:6px;
+}
+.database-page #detailContent .nested-card:hover,
+.database-page #detailContent .dtc-config-card:hover {
+    background:#fff;
+    border-color:#b9cfc3;
+}
+.database-page #detailContent .signal-list,
+.database-page #detailContent .reference-list {
+    margin:10px 0 8px;
+    padding:4px 0 0 16px;
+    border-top:1px solid #e6ece8;
+    border-left:0;
+}
+.database-page #detailContent .signal-list .list-row,
+.database-page #detailContent .reference-list .reference-row {
+    padding:8px 0;
+    background:transparent;
+}
+.database-page #detailContent .signal-list .list-row:hover,
+.database-page #detailContent .reference-list .reference-row:hover,
+.database-page #detailContent .subsection > .list-row:hover {
+    background:transparent;
+}
+.database-page .dialog-actions .dialog-delete {margin-right:auto;background:#fff;color:#a32c32;border:1px solid #d7aeb0;}
+.database-page .dialog-actions .dialog-delete:hover {background:#fbefef;}
+
+
+/* Ergebnisdetails im selben ruhigen Stil wie das Fahrzeugdetail der
+   Datenpflege: weiße Karten mit dünnem Rahmen, keine getönten Kopfbänder,
+   keine grünen Seitenbalken. */
+.results-page #runDetail .run-check-grid > .archive-card,
+.results-page #runDetail > .measurements-card,
+.results-page #measurementDetail .archive-metrics,
+.results-page #measurementDetail .archive-metadata {
+    background:#fff;
+    border:1px solid var(--green-border);
+    border-radius:13px;
+}
+.results-page #runDetail .archive-card > .section-title {
+    margin:0 0 16px;
+    padding:0 0 14px;
+    background:transparent;
+    border-bottom:1px solid var(--green-border);
+}
+.results-page #runDetail .archive-card details {
+    background:#fff;
+    border:1px solid #dbe5df;
+    border-radius:6px;
+}
+.results-page #runDetail .measurements-card .table-scroll {
+    border:1px solid #dbe5df;
+    border-radius:6px;
+}
+.results-page #measurementDetail .archive-metrics .metric-card,
+.results-page #measurementDetail .archive-metadata .fact {
+    border-right-color:#e6ece8;
+}
+.results-page #measurementDetail .archive-chart-card {
+    border-radius:13px;
+}
+@media(max-width:650px) {
+    .results-page #runDetail .archive-card > .section-title {margin:0 0 14px;padding:0 0 12px;}
+    .results-page #measurementDetail .archive-metrics .metric-card,
+    .results-page #measurementDetail .archive-metadata .fact {border-bottom-color:#e6ece8;}
+}
+@media(min-width:901px) {
+    .results-page #measurementDetail .archive-metrics .metric-card:nth-child(3n),
+    .results-page #measurementDetail .archive-metadata .fact:nth-child(3n) {border-right:0;}
+}
+.database-page #detailContent .vehicle-data-section > .facts-grid .fact {background:transparent;}
+
+
+/* Fahrzeugdetail: Kennungen, DTC- und Diagnoseabfragen als aufklappbare Zeilen. */
+.database-page #detailContent .mono,
+.database-page #detailContent code {font-family:"DejaVu Sans Mono",Consolas,"Liberation Mono",monospace;font-variant-numeric:tabular-nums;}
+.database-page #detailContent .disclosure-list {border:1px solid #dbe5df;border-radius:6px;background:#fff;}
+.database-page #detailContent .disclosure-row + .disclosure-row {border-top:1px solid #edf2ef;}
+.database-page #detailContent .disclosure-row summary {display:grid;grid-template-columns:minmax(180px,1.2fr) minmax(110px,.8fr) minmax(120px,1fr) auto;gap:16px;align-items:center;padding:12px 16px;cursor:pointer;list-style:none;font-size:14px;}
+.database-page #detailContent .disclosure-row summary::-webkit-details-marker {display:none;}
+.database-page #detailContent .disclosure-row summary strong::before {content:"";display:inline-block;width:6px;height:6px;margin:0 12px 2px 2px;border-right:2px solid #5f6f66;border-bottom:2px solid #5f6f66;transform:rotate(-45deg);transition:transform .15s cubic-bezier(.2,.8,.2,1);}
+.database-page #detailContent .disclosure-row[open] summary strong::before {transform:translateY(-2px) rotate(45deg);}
+.database-page #detailContent .disclosure-row summary .mono {color:#5f6f66;font-size:13px;}
+.database-page #detailContent .disclosure-row summary .muted {font-size:13px;text-align:right;}
+.database-page #detailContent .disclosure-row summary:hover {background:#f7faf8;}
+.database-page #detailContent .disclosure-body {padding:4px 16px 14px 32px;}
+.database-page #detailContent .disclosure-actions {display:flex;gap:16px;align-items:center;margin-top:10px;}
+@media(max-width:700px) {
+    .database-page #detailContent .disclosure-row summary {grid-template-columns:1fr auto;}
+    .database-page #detailContent .disclosure-row summary .mono,
+    .database-page #detailContent .disclosure-row summary code {grid-column:1;}
+}
