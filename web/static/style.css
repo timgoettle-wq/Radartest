@@ -762,3 +762,64 @@ button.primary,.database-page button.secondary,.database-page button.danger,.res
 }
 
 @media (max-width:700px) {.sensor-selector-row {align-items:stretch;flex-direction:column;}.sensor-selector {min-width:0;}.sensor-selector-row button {width:100%;}.database-page .section-heading,.database-page .entity-header,.database-page .danger-zone {align-items:stretch;flex-direction:column;}}
+
+
+/* Ruhigeres Fahrzeugdetail: zwei Rahmenebenen statt vier, keine Seitenbalken.
+   Ebene 1: weiße Karten „Fahrzeugdaten“ und „Radarsensor“.
+   Ebene 2: einzelne Kennungen, DTC- und Diagnoseabfragen. */
+.database-page #detailContent > section > article.entity-card.sensor-workspace,
+.database-page #detailContent article.entity-card.sensor-workspace {
+    margin:0;
+    padding:0;
+    background:transparent;
+    border:0;
+    border-radius:0;
+}
+.database-page #detailContent article.entity-card.sensor-workspace > .entity-header {
+    margin:0 0 16px;
+    padding:20px 0 16px;
+    background:transparent;
+    border-top:1px solid var(--green-border);
+    border-bottom:0;
+}
+.database-page #detailContent .sensor-workspace > .compact-facts .fact {background:transparent;}
+.database-page #detailContent .sensor-workspace > .subsection {
+    margin-top:28px;
+    padding:20px 0 0;
+    background:transparent;
+    border:0;
+    border-top:1px solid var(--green-border);
+    border-radius:0;
+}
+.database-page #detailContent .nested-card,
+.database-page #detailContent .dtc-config-card {
+    margin:8px 0;
+    padding:12px 16px;
+    background:#fff;
+    border:1px solid #dbe5df;
+    border-radius:6px;
+}
+.database-page #detailContent .nested-card:hover,
+.database-page #detailContent .dtc-config-card:hover {
+    background:#fff;
+    border-color:#b9cfc3;
+}
+.database-page #detailContent .signal-list,
+.database-page #detailContent .reference-list {
+    margin:10px 0 8px;
+    padding:4px 0 0 16px;
+    border-top:1px solid #e6ece8;
+    border-left:0;
+}
+.database-page #detailContent .signal-list .list-row,
+.database-page #detailContent .reference-list .reference-row {
+    padding:8px 0;
+    background:transparent;
+}
+.database-page #detailContent .signal-list .list-row:hover,
+.database-page #detailContent .reference-list .reference-row:hover,
+.database-page #detailContent .subsection > .list-row:hover {
+    background:transparent;
+}
+.database-page .dialog-actions .dialog-delete {margin-right:auto;background:#fff;color:#a32c32;border:1px solid #d7aeb0;}
+.database-page .dialog-actions .dialog-delete:hover {background:#fbefef;}

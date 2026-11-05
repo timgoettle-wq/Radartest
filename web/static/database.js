@@ -90,6 +90,8 @@ function keyNumberEditor(vehicle) {
   return wrapper;
 }
 
+const DIALOG_DELETE_KINDS = ["identification", "reference", "parameter", "field", "dtc"];
+
 const EDITORS = {
   vehicle:{table:"vehicles", title:"Fahrzeug", context:"Fahrzeugdaten"},
   sensor:{table:"ecus", title:"Radarsensor", context:"Sensor und Kommunikation"},
@@ -315,7 +317,7 @@ function renderSensorWorkspace(sensor) {
 
     <div class="subsection">
       <div class="section-heading"><div><h3>DTC-Abfrage</h3><p>Fehlerspeicherabfrage dieses Radarsensors.</p></div>${action("+ DTC-Abfrage", "newDtc", sensor.id)}</div>
-      ${dtcs.map(dtc => `<div class="list-row nested-card dtc-config-card"><div><strong>Service ${hex(dtc.service)}</strong><span>Subfunktion ${hex(dtc.subfunction)} · Statusmaske ${hex(dtc.status_mask)} · ${dtc.enabled ? "aktiv" : "inaktiv"}</span></div><div class="button-row">${action("Bearbeiten", "editDtc", dtc.id, "link-button")}${action("Löschen", "deleteDtc", dtc.id, "link-button danger-text")}</div></div>`).join("") || '<p class="empty-inline">Keine DTC-Abfrage konfiguriert.</p>'}
+      ${dtcs.map(dtc => `<div class="list-row nested-card dtc-config-card"><div><strong>Service ${hex(dtc.service)}</strong><span>Subfunktion ${hex(dtc.subfunction)} · Statusmaske ${hex(dtc.status_mask)} · ${dtc.enabled ? "aktiv" : "inaktiv"}</span></div><div class="button-row">${action("Bearbeiten", "editDtc", dtc.id, "link-button")}</div></div>`).join("") || '<p class="empty-inline">Keine DTC-Abfrage konfiguriert.</p>'}
     </div>
 
     <div class="subsection diagnosis-subsection">
@@ -328,8 +330,8 @@ function renderSensorWorkspace(sensor) {
 function renderIdentification(item) {
   const references = related("accepted_identification_values", "identification_parameter_id", item.id);
   return `<div class="nested-card">
-    <div class="nested-main"><div><strong>${esc(item.label)}</strong><span>DID ${hex(item.did)} · ${esc(item.data_type)}</span></div><div class="button-row">${action("Bearbeiten", "editIdentification", item.id, "link-button")}${action("Löschen", "deleteIdentification", item.id, "link-button danger-text")}</div></div>
-    <div class="reference-list">${references.map(ref => `<div class="reference-row"><div><code>${esc(ref.value)}</code>${ref.note ? `<span>${esc(ref.note)}</span>` : ""}</div><div class="button-row">${action("Bearbeiten", "editReference", ref.id, "link-button")}${action("Löschen", "deleteReference", ref.id, "link-button danger-text")}</div></div>`).join("") || `<span class="muted">Noch kein zulässiger Referenzwert</span>`}</div>
+    <div class="nested-main"><div><strong>${esc(item.label)}</strong><span>DID ${hex(item.did)} · ${esc(item.data_type)}</span></div><div class="button-row">${action("Bearbeiten", "editIdentification", item.id, "link-button")}</div></div>
+    <div class="reference-list">${references.map(ref => `<div class="reference-row"><div><code>${esc(ref.value)}</code>${ref.note ? `<span>${esc(ref.note)}</span>` : ""}</div><div class="button-row">${action("Bearbeiten", "editReference", ref.id, "link-button")}</div></div>`).join("") || `<span class="muted">Noch kein zulässiger Referenzwert</span>`}</div>
     ${action("+ Referenzwert", "newReference", item.id, "small-button")}
   </div>`;
 }
@@ -337,8 +339,8 @@ function renderIdentification(item) {
 function renderParameter(parameter) {
   const fields = related("signal_fields", "parameter_id", parameter.id);
   return `<div class="nested-card">
-    <div class="nested-main"><div><strong>Diagnoseabfrage</strong><span>SID ${hex(parameter.service)} · DID/PID ${hex(parameter.did)}</span></div><div class="button-row">${action("Bearbeiten", "editParameter", parameter.id, "link-button")}${action("Löschen", "deleteParameter", parameter.id, "link-button danger-text")}</div></div>
-    <div class="signal-list">${fields.map(field => `<div class="list-row"><div><strong>${esc(field.name)}</strong><span>Byte ${field.byte_offset}, ${field.byte_length} Byte · ${esc(field.data_type)} · Faktor ${field.factor}${field.unit ? ` · ${esc(field.unit)}` : ""}</span></div><div class="button-row">${action("Bearbeiten", "editField", field.id, "link-button")}${action("Löschen", "deleteField", field.id, "link-button danger-text")}</div></div>`).join("") || `<span class="muted">Noch kein Signalfeld definiert.</span>`}</div>
+    <div class="nested-main"><div><strong>Diagnoseabfrage</strong><span>SID ${hex(parameter.service)} · DID/PID ${hex(parameter.did)}</span></div><div class="button-row">${action("Bearbeiten", "editParameter", parameter.id, "link-button")}</div></div>
+    <div class="signal-list">${fields.map(field => `<div class="list-row"><div><strong>${esc(field.name)}</strong><span>Byte ${field.byte_offset}, ${field.byte_length} Byte · ${esc(field.data_type)} · Faktor ${field.factor}${field.unit ? ` · ${esc(field.unit)}` : ""}</span></div><div class="button-row">${action("Bearbeiten", "editField", field.id, "link-button")}</div></div>`).join("") || `<span class="muted">Noch kein Signalfeld definiert.</span>`}</div>
     ${action("+ Signalfeld", "newField", parameter.id, "small-button")}
   </div>`;
 }
@@ -405,6 +407,9 @@ function openEditor(kind, row=null, fixed={}) {
     const description = $("editor").querySelector('[name="description"]')?.closest("label");
     $("editor").insertBefore(keyNumberEditor(row), description || null);
   }
+  // Löschen von Kennungen, Referenzwerten, DTC-Abfragen, Diagnoseabfragen
+  // und Signalfeldern liegt im Bearbeiten-Dialog statt neben jeder Zeile.
+  $("deleteInDialog").hidden = !(row && DIALOG_DELETE_KINDS.includes(kind));
   $("editorForm").querySelector(":scope > .form-hint").hidden =
     !table.columns.some(column => state.hex_fields.includes(column.name));
   $("editorDialog").showModal();
@@ -445,8 +450,9 @@ async function saveEditor(event) {
   } catch (error) { message(error.message, true); }
 }
 
-async function remove(table, id, label) {
+async function remove(table, id, label, afterConfirm=null) {
   if (!confirm(`${label} wirklich löschen? Vorher wird eine Datenbanksicherung erstellt.`)) return;
+  afterConfirm?.();
   try {
     await request(`/api/database/${table}/${id}`, {method:"DELETE"});
     if (table === "vehicles") {
@@ -472,19 +478,14 @@ function handleAction(actionName, id) {
     deleteSensor:() => remove("ecus", id, "Radarsensor"),
     newIdentification:() => openEditor("identification", null, {ecu_id:id}),
     editIdentification:() => { const row=find("identification_parameters",id); openEditor("identification",row,{ecu_id:row.ecu_id}); },
-    deleteIdentification:() => remove("identification_parameters",id,"Kennung"),
     newReference:() => openEditor("reference",null,{identification_parameter_id:id}),
     editReference:() => { const row=find("accepted_identification_values",id); openEditor("reference",row,{identification_parameter_id:row.identification_parameter_id}); },
-    deleteReference:() => remove("accepted_identification_values",id,"Referenzwert"),
     newParameter:() => id ? openEditor("parameter",null,{ecu_id:id}) : openEditor("parameter"),
     editParameter:() => { const row=find("diagnostic_parameters",id); openEditor("parameter",row,{ecu_id:row.ecu_id}); },
-    deleteParameter:() => remove("diagnostic_parameters",id,"Diagnoseparameter"),
     newField:() => openEditor("field",null,{parameter_id:id}),
     editField:() => { const row=find("signal_fields",id); openEditor("field",row,{parameter_id:row.parameter_id}); },
-    deleteField:() => remove("signal_fields",id,"Signalfeld"),
     newDtc:() => openEditor("dtc",null,{ecu_id:id}),
-    editDtc:() => { const row=find("dtc_config",id); openEditor("dtc",row,{ecu_id:row.ecu_id}); },
-    deleteDtc:() => remove("dtc_config",id,"DTC-Abfrage")
+    editDtc:() => { const row=find("dtc_config",id); openEditor("dtc",row,{ecu_id:row.ecu_id}); }
   };
   actions[actionName]?.();
 }
@@ -513,6 +514,11 @@ document.addEventListener("keydown", event => {
 $("manufacturerFilter").onchange = renderVehicleList;
 $("reload").onclick = () => load();
 $("editorForm").onsubmit = saveEditor;
+$("deleteInDialog").onclick = async () => {
+  const {table, row, kind} = editorState;
+  if (!row || !DIALOG_DELETE_KINDS.includes(kind)) return;
+  await remove(table, row.id, EDITORS[kind].title, () => $("editorDialog").close());
+};
 $("cancelDialog").onclick = $("closeDialog").onclick = () => $("editorDialog").close();
 window.onpopstate = () => { selectedVehicleId=Number(new URLSearchParams(location.search).get("vehicle")) || null; selectedSensorId=null; render(); };
 
