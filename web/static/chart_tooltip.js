@@ -126,14 +126,23 @@
             return;
         }
 
-        let closest = state.points[0];
-        let closestDistance = Math.abs(state.x(number(closest[state.timeKey])) - mouseX);
-        for (const point of state.points.slice(1)) {
-            const distance = Math.abs(state.x(number(point[state.timeKey])) - mouseX);
-            if (distance < closestDistance) {
-                closest = point;
-                closestDistance = distance;
-            }
+        // Punkte sind nach Zeit sortiert: binäre Suche statt bei jeder
+        // Mausbewegung alle Punkte zu kopieren und zu durchlaufen. Das hielt
+        // den Browser auf dem Pi bei langen Messungen spürbar auf.
+        const points = state.points;
+        let low = 0;
+        let high = points.length - 1;
+        while (low < high) {
+            const middle = (low + high) >> 1;
+            if (state.x(number(points[middle][state.timeKey])) < mouseX) low = middle + 1;
+            else high = middle;
+        }
+        let closest = points[low];
+        if (low > 0) {
+            const before = points[low - 1];
+            const distanceBefore = Math.abs(state.x(number(before[state.timeKey])) - mouseX);
+            const distanceHere = Math.abs(state.x(number(closest[state.timeKey])) - mouseX);
+            if (distanceBefore <= distanceHere) closest = before;
         }
 
         const time = number(closest[state.timeKey]);
