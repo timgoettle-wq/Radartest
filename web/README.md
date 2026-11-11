@@ -40,3 +40,27 @@ Die bestehende SQLite-Datei wird durch dieses Update nicht ersetzt.
 
 Tests (benötigen FastAPI und httpx):
 `python -m unittest discover -s tests`
+
+## Starten und Beenden
+
+`python -m web.app` startet die Prüfoberfläche auf Port 8000. Strg+C wartet
+dann höchstens 3 s auf hängende Anfragen und trennt RadEsT und CAN sauber.
+Wer weiter `uvicorn web.app:app --host 0.0.0.0` nutzt, sollte
+`--timeout-graceful-shutdown 3` anhängen.
+
+## Wenn die Oberfläche hängt
+
+1. Im Terminal des Servers einmal Strg+C. Kommt nach ein paar Sekunden keine
+   Eingabezeile, ein zweites Mal Strg+C.
+2. `bash pi_diagnose.sh` im Repo-Ordner ausführen. Die Datei unter `logs/`
+   zeigt Speicher, Unterspannung, belegte Ports, RadEsT-Erreichbarkeit,
+   CAN-Zustand und Kernel-Meldungen.
+3. Meldet der Neustart „address already in use“: `ss -ltnp | grep 800` zeigt
+   den alten Prozess, `kill <PID>` (notfalls `kill -9 <PID>`) beendet ihn.
+4. Antwortet der RadEsT nicht mehr (Verbinden schlägt fehl), RadEsT aus- und
+   wieder einschalten.
+
+Ein RadEsT-Befehl wartet höchstens 60 s auf eine Antwort (Szenario-Start
+300 s). Spricht gerade ein anderer Teil des Programms mit dem RadEsT, bricht
+ein zweiter Befehl nach 10 s mit „RadEsT ist noch … beschäftigt“ ab, statt
+die Antwort des ersten zu stehlen.

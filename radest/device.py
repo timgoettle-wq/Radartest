@@ -1,10 +1,30 @@
-import socket, re
+import socket, re, threading
 from .logger import globalLogger
 # from logger import globalLogger # for Python MWE
+
+# Normale SCPI-Befehle antworten sofort. Bleibt die Antwort aus, soll das
+# Programm nach dieser Zeit einen Fehler melden statt minutenlang zu warten.
+COMMAND_TIMEOUT_S = 60
+# SCENARIO:TRIGGER antwortet erst, wenn das Szenario durchgelaufen ist.
+SCENARIO_TIMEOUT_S = 300
+# *IDN? beim Verbinden: antwortet der RadEsT nicht, gilt er als nicht verbunden.
+IDENTIFY_TIMEOUT_S = 5
+# So lange wartet ein Befehl, wenn ein anderer Thread gerade mit dem RadEsT
+# spricht (z. B. ein laufendes Szenario), bevor er mit Fehler abbricht.
+BUSY_WAIT_S = 10
+
+
+class RadestBusyError(RuntimeError):
+    pass
+
 
 class RadestDevice:
     def __init__(self, ip_address, port):
         self.socket = None
+        # Ein Befehl und seine Antwort gehören zusammen. Ohne Sperre kann ein
+        # zweiter Thread die Antwort des ersten lesen; der erste wartet dann
+        # bis zum Timeout und blockiert dabei die Weboberfläche.
+        self._io_lock = threading.RLock()
         self.ip = ip_address
         self.port = port
         self.meas_power = None
@@ -21,13 +41,22 @@ class RadestDevice:
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.socket.settimeout(1)
             self.socket.connect((self.ip, self.port))
-            self.identify()
+            self.socket.settimeout(IDENTIFY_TIMEOUT_S)
+            answer = self.identify()
+            if not answer or answer == "timeout":
+                globalLogger.warning(
+                    "RadEsT antwortet nicht auf *IDN? "
+                    "(evtl. noch belegt oder hängt)."
+                )
+                self.disconnect()
+                return False
             self.sleep(0)
-            self.socket.settimeout(300)
+            self.socket.settimeout(COMMAND_TIMEOUT_S)
             return True
 
         except socket.error as error:
-            globalLogger.info("Error connecting to RadestDevice:", error)
+            globalLogger.warning(f"Error connecting to RadestDevice: {error}")
+            self.disconnect()
             return False
 
     def recv(self, buffer_size=64):
@@ -52,24 +81,51 @@ class RadestDevice:
         globalLogger.info(f"Sending: {msg:s}")        
 
     def disconnect(self):
+        sock = self.socket
+        if sock is None:
+            return False
         try:
             globalLogger.info('Disconnecting..\n')
-            self.socket.shutdown(socket.SHUT_RDWR)
-            self.socket.close()
+            # shutdown weckt auch einen Thread, der gerade in recv() wartet.
+            try:
+                sock.shutdown(socket.SHUT_RDWR)
+            finally:
+                sock.close()
             return True
         except Exception as e:
-            globalLogger.warning("Error disconnecting: ", e)
+            globalLogger.warning(f"Error disconnecting: {e}")
+        finally:
+            self.socket = None
 
         return False
 
      # Send and receive
-    def send_scpi_and_print_answer(self, scpi_command):
-        if self.b_recording:
-            self.command_list.append(scpi_command)
-        self.send(scpi_command)
-        answer = self.recv().rstrip()
-        globalLogger.info(f"receiving: {answer}")
-        return answer
+    def send_scpi_and_print_answer(self, scpi_command, timeout_s=None):
+        if not self._io_lock.acquire(timeout=BUSY_WAIT_S):
+            raise RadestBusyError(
+                f"RadEsT ist noch mit einem anderen Befehl beschäftigt "
+                f"(z. B. laufendes Szenario); '{scpi_command}' nicht gesendet."
+            )
+        try:
+            if self.socket is None:
+                raise ConnectionError("RadEsT ist nicht verbunden")
+            if self.b_recording:
+                self.command_list.append(scpi_command)
+            if timeout_s is not None:
+                self.socket.settimeout(timeout_s)
+            try:
+                self.send(scpi_command)
+                answer = self.recv().rstrip()
+            finally:
+                if timeout_s is not None and self.socket is not None:
+                    try:
+                        self.socket.settimeout(COMMAND_TIMEOUT_S)
+                    except OSError:
+                        pass  # Socket wurde inzwischen getrennt.
+            globalLogger.info(f"receiving: {answer}")
+            return answer
+        finally:
+            self._io_lock.release()
 
     def parse_numbers_from_string(self,s):
         try:
@@ -277,7 +333,7 @@ class RadestDevice:
     # Scenario  
     def scenario_trigger(self):
         scpi_command = "SCENARIO:TRIGGER"
-        self.send_scpi_and_print_answer(scpi_command)
+        self.send_scpi_and_print_answer(scpi_command, timeout_s=SCENARIO_TIMEOUT_S)
         globalLogger.info("Scenario done")
 
     def scenario_distance_start(self, start_distance):
@@ -448,5 +504,5 @@ class RadestDevice:
     # Perform self-test
     def system_selftest(self):
         scpi_command = "SYSTEM:SELFTEST?"
-        answer = self.send_scpi_and_print_answer(scpi_command)
+        answer = self.send_scpi_and_print_answer(scpi_command, timeout_s=SCENARIO_TIMEOUT_S)
         return answer

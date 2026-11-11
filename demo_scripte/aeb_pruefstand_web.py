@@ -910,4 +910,11 @@ if __name__ == "__main__":
     import uvicorn
 
     print(f"AEB-Liveoberflaeche: http://raspberrypi.local:{PORT}")
-    uvicorn.run(app, host=HOST, port=PORT)
+    import inspect
+
+    # Strg+C wartet hoechstens 3 s auf haengende Anfragen
+    # (aeltere uvicorn-Versionen kennen die Option nicht).
+    options = {}
+    if "timeout_graceful_shutdown" in inspect.signature(uvicorn.Config).parameters:
+        options["timeout_graceful_shutdown"] = 3
+    uvicorn.run(app, host=HOST, port=PORT, **options)

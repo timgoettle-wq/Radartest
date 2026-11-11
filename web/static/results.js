@@ -435,8 +435,9 @@ function drawArchiveChart(points) {
     }
 
     const values = valid.flatMap(point => [point.radest_distance_m, point.vehicle_distance_m]).filter(Number.isFinite);
-    let minY = Math.min(...values);
-    let maxY = Math.max(...values);
+    // reduce statt Math.min(...values): sehr lange Messungen sprengen sonst den Stack.
+    let minY = values.reduce((low, value) => Math.min(low, value), Infinity);
+    let maxY = values.reduce((high, value) => Math.max(high, value), -Infinity);
     const margin = Math.max(0.5, (maxY - minY) * 0.12);
     minY -= margin;
     maxY += margin;

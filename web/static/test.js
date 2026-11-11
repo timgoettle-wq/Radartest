@@ -679,7 +679,26 @@ function updateMeasurement(data) {
         $("scenarioProgress").textContent = Number.isFinite(progress) ? fixed(progress * 100, 1) + " %" : "–";
         $("scenarioDuration").textContent = fixed(data.dynamic_total_duration_s);
     }
-    drawChart();
+    scheduleLiveChart();
+}
+
+// Messpunkte kommen bis zu 20-mal pro Sekunde. Das Diagramm wird höchstens
+// alle LIVE_CHART_INTERVAL_MS neu gezeichnet, sonst wird der Browser bei
+// langen Messungen (viele Punkte) auf dem Pi immer träger.
+const LIVE_CHART_INTERVAL_MS = 250;
+let liveChartTimer = null;
+let liveChartLastDraw = 0;
+
+function scheduleLiveChart() {
+    if (liveChartTimer !== null) return;
+    const wait = Math.max(0, LIVE_CHART_INTERVAL_MS - (performance.now() - liveChartLastDraw));
+    liveChartTimer = setTimeout(() => {
+        requestAnimationFrame(() => {
+            liveChartTimer = null;
+            liveChartLastDraw = performance.now();
+            drawChart();
+        });
+    }, wait);
 }
 
 function signalText(signal) {
@@ -715,9 +734,17 @@ function drawChart(canvasId = "liveChart") {
         context.fillText("Der Live-Verlauf erscheint mit den ersten Messpunkten.", width / 2, height / 2);
         return;
     }
-    const values = points.flatMap(point => [point.radest, point.vehicle]).filter(Number.isFinite);
-    let minY = Math.min(...values);
-    let maxY = Math.max(...values);
+    // Schleife statt Math.min(...values): bei sehr vielen Punkten
+    // bricht der Spread-Operator mit "Maximum call stack size" ab.
+    let minY = Infinity;
+    let maxY = -Infinity;
+    for (const point of points) {
+        for (const value of [point.radest, point.vehicle]) {
+            if (!Number.isFinite(value)) continue;
+            if (value < minY) minY = value;
+            if (value > maxY) maxY = value;
+        }
+    }
     const margin = Math.max(0.5, (maxY - minY) * 0.12);
     minY -= margin;
     maxY += margin;
@@ -845,7 +872,7 @@ function finishMeasurement(status, errorMessage = "") {
         ? fixed(validErrors.reduce((sum, value) => sum + value, 0) / validErrors.length) + " m"
         : "Nicht verfügbar";
     $("resultMaxError").textContent = validErrors.length
-        ? fixed(Math.max(...validErrors)) + " m"
+        ? fixed(validErrors.reduce((high, value) => Math.max(high, value), -Infinity)) + " m"
         : "Nicht verfügbar";
     $("logFile").textContent = uiState.logFile || "–";
     $("resultStatus").className = "status-pill " + (status === "finished" ? "success" : status === "aborted" ? "warning" : "error");

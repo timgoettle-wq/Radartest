@@ -32,6 +32,9 @@ CAN_ISOTP_TX_PADDING = getattr(
     0x0004
 )
 
+# ip link set ... dauert normalerweise Millisekunden.
+CAN_COMMAND_TIMEOUT_S = 10
+
 
 class VehicleDiagnostic:
 
@@ -284,6 +287,12 @@ class VehicleDiagnostic:
     ):
 
         # --------------------------------------------------
+        # sudo -n: Fragt sudo nach einem Passwort, bricht der
+        # Befehl sofort ab, statt unsichtbar im Hintergrund zu
+        # warten und die Weboberfläche zu blockieren.
+        # --------------------------------------------------
+
+        # --------------------------------------------------
         # CAN zunächst herunterfahren.
         #
         # check=False:
@@ -294,13 +303,15 @@ class VehicleDiagnostic:
         subprocess.run(
             [
                 "sudo",
+                "-n",
                 "ip",
                 "link",
                 "set",
                 channel,
                 "down",
             ],
-            check=False
+            check=False,
+            timeout=CAN_COMMAND_TIMEOUT_S
         )
 
 
@@ -311,6 +322,7 @@ class VehicleDiagnostic:
         subprocess.run(
             [
                 "sudo",
+                "-n",
                 "ip",
                 "link",
                 "set",
@@ -320,7 +332,8 @@ class VehicleDiagnostic:
                 "bitrate",
                 str(bitrate),
             ],
-            check=True
+            check=True,
+            timeout=CAN_COMMAND_TIMEOUT_S
         )
 
 
@@ -331,13 +344,15 @@ class VehicleDiagnostic:
         subprocess.run(
             [
                 "sudo",
+                "-n",
                 "ip",
                 "link",
                 "set",
                 channel,
                 "up",
             ],
-            check=True
+            check=True,
+            timeout=CAN_COMMAND_TIMEOUT_S
         )
 
 

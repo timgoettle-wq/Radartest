@@ -54,13 +54,28 @@ def results_page():
     return (WEB_DIR / "templates" / "results.html").read_text(encoding="utf-8")
 
 
+# Name der Aktion, die gerade den Controller benutzt. Damit kann
+# /api/status sagen, worauf der Pi wartet, statt selbst zu hängen.
+busy_action = None
+
+# So lange wartet /api/status höchstens auf eine laufende Aktion.
+STATUS_LOCK_TIMEOUT_S = 3.0
+
+
 def serialized_controller_access(function):
 
     @wraps(function)
     def wrapper(*args, **kwargs):
 
+        global busy_action
+
         with controller_lock:
-            return function(*args, **kwargs)
+            previous_action = busy_action
+            busy_action = function.__name__
+            try:
+                return function(*args, **kwargs)
+            finally:
+                busy_action = previous_action
 
     return wrapper
 
@@ -141,8 +156,27 @@ def index():
 # ==================================================
 
 @app.get("/api/status")
-@serialized_controller_access
 def get_system_status():
+
+    # Hängt eine andere Aktion (z. B. RadEsT antwortet nicht), soll das
+    # Neuladen der Seite nicht ebenfalls hängen bleiben.
+    if not controller_lock.acquire(timeout=STATUS_LOCK_TIMEOUT_S):
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Der Pi ist noch mit einer anderen Aktion beschäftigt "
+                f"({busy_action or 'unbekannt'}). Bitte kurz warten und "
+                "die Seite neu laden."
+            )
+        )
+
+    try:
+        return _system_status()
+    finally:
+        controller_lock.release()
+
+
+def _system_status():
 
     if controller is None:
         return {
@@ -806,3 +840,54 @@ def disconnect_vehicle():
     return {
         "connected": False
     }
+
+
+# ==================================================
+# BEENDEN (Strg+C)
+# ==================================================
+
+@app.on_event("shutdown")
+def close_controller_on_shutdown():
+
+    # Beim Beenden RadEsT- und CAN-Verbindung sauber schließen und den
+    # TestRun abschließen, damit der nächste Start eine freie Verbindung
+    # vorfindet.
+    global controller
+
+    active_controller = controller
+
+    if active_controller is None:
+        return
+
+    if not controller_lock.acquire(timeout=2.0):
+        # Eine Aktion hängt (meist in einer RadEsT-Antwort). Socket
+        # schließen, damit sie aufwacht und die Sperre freigibt.
+        try:
+            active_controller.radest.disconnect()
+        except Exception:
+            pass
+
+        if not controller_lock.acquire(timeout=5.0):
+            return
+
+    try:
+        active_controller.disconnect()
+    except Exception as error:
+        print(f"Fehler beim Trennen: {error}")
+    finally:
+        controller = None
+        controller_lock.release()
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    # timeout_graceful_shutdown: Strg+C wartet höchstens 3 s auf hängende
+    # Anfragen, statt endlos.
+    # Ältere uvicorn-Versionen kennen die Option noch nicht.
+    import inspect
+    options = {}
+    if "timeout_graceful_shutdown" in inspect.signature(uvicorn.Config).parameters:
+        options["timeout_graceful_shutdown"] = 3
+
+    uvicorn.run(app, host="0.0.0.0", port=8000, **options)
