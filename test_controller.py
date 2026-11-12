@@ -494,17 +494,29 @@ class TestController:
         }
 
 
-    def measure_precheck_polarization(self):
+    # Antwortcodes von MEASURE:GET:POLARIZATION? -> Einstellung
+    POLARIZATION_CODES = {
+        "5": "H",
+        "8": "V",
+        "7": "P45",
+        "6": "M45",
+        "H": "H",
+        "V": "V",
+        "P45": "P45",
+        "M45": "M45"
+    }
 
-        self._check_connection()
+    # Wie oft die Polarisation abgefragt wird, wenn das RadEsT
+    # kein Radarsignal erkennt (Antwort "0,0.00").
+    POLARIZATION_ATTEMPTS = 3
+    POLARIZATION_RETRY_DELAY_S = 1.0
 
-        self.polarization = (
-            self.radest
-            .measure_get_polarization_77ghz()
-        )
 
-        detected_code = (
-            str(self.polarization)
+    @staticmethod
+    def _polarization_code(answer):
+
+        return (
+            str(answer)
             .strip()
             .strip('"')
             .split(",")[0]
@@ -512,18 +524,49 @@ class TestController:
             .upper()
         )
 
-        polarization_setting = {
-            "5": "H",
-            "8": "V",
-            "7": "P45",
-            "6": "M45",
-            "H": "H",
-            "V": "V",
-            "P45": "P45",
-            "M45": "M45"
-        }.get(detected_code)
+
+    def measure_precheck_polarization(self):
+
+        self._check_connection()
+
+        polarization_setting = None
+
+        for attempt in range(self.POLARIZATION_ATTEMPTS):
+
+            if attempt > 0:
+                time.sleep(self.POLARIZATION_RETRY_DELAY_S)
+
+            self.polarization = (
+                self.radest
+                .measure_get_polarization_77ghz()
+            )
+
+            detected_code = self._polarization_code(
+                self.polarization
+            )
+
+            polarization_setting = self.POLARIZATION_CODES.get(
+                detected_code
+            )
+
+            # Code 0 = kein Signal erkannt, erneut versuchen
+            if detected_code != "0":
+                break
 
         if polarization_setting is None:
+
+            if detected_code == "0":
+                raise RuntimeError(
+                    "Das RadEsT empfängt kein Radarsignal, die "
+                    "Polarisation konnte nicht bestimmt werden "
+                    f"(Antwort {self.polarization}, "
+                    f"{self.POLARIZATION_ATTEMPTS} Versuche). "
+                    "Bitte prüfen, ob das Fahrzeugradar sendet "
+                    "(Zündung an, Radar aktiv, keine Fehler) und ob "
+                    "es auf das RadEsT ausgerichtet ist. Danach "
+                    "Precheck erneut starten."
+                )
+
             raise RuntimeError(
                 "Unbekannte Polarisationsantwort des RadEsT: "
                 f"{self.polarization}"
