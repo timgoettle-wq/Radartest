@@ -1180,3 +1180,30 @@ button.primary,.database-page button.secondary,.database-page button.danger,.res
     .stepper button {font-size:0;}
     .stepper button span {font-size:12px;}
 }
+
+
+/* Prüfablauf: Hauptaktion an fester Stelle direkt unter der Überschrift.
+   Solange ein Schritt nicht erledigt ist, steht dort „… starten“.
+   Danach steht an genau derselben Stelle „Weiter …“; „erneut starten“,
+   „Überspringen“ und „Zurück“ rücken als Konturbuttons daneben. */
+.step-actions {display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:0;}
+.step-actions .step-next:disabled {display:none;}
+.step-actions:has(.step-next:not(:disabled)) .step-next {order:-1;}
+.step-actions:has(.step-next:not(:disabled)) #skipPrecheckButton {display:none;}
+.test-app .step-actions:has(.step-next:not(:disabled)) button.step-start {
+    background:#FFFFFF;color:var(--dekra-logo-green);border-color:var(--dekra-logo-green);
+}
+.test-app .step-actions:has(.step-next:not(:disabled)) button.step-start:hover:not(:disabled) {
+    background:var(--dekra-light-green-40);color:var(--dekra-dark-green);border-color:var(--dekra-dark-green);
+}
+.step-actions .step-back {margin-left:0;}
+#screenVehicle .selection-panel .step-actions {align-self:flex-start;}
+#screenVehicle #connectButton {align-self:auto;}
+#screenQuickCheck .step-actions,#screenPrecheck .step-actions {margin-bottom:8px;}
+.test-app .result-actions {justify-content:flex-start;}
+@media(max-width:650px){
+    .step-actions {flex-direction:column;align-items:stretch;}
+    .step-actions button {width:100%;}
+}
+/* Nach erfolgreicher Verbindung bleibt nur „Weiter“; neu verbinden geht über „Trennen“. */
+#screenVehicle .step-actions:has(.step-next:not(:disabled)) .step-start {display:none;}
