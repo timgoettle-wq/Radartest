@@ -546,34 +546,50 @@ class TestController:
 
         self._check_connection()
 
-        # Messung starten. Das RadEsT stellt die erkannte
-        # Polarisation danach selbst ein.
+        # Ablauf wie in der R&S-Software:
+        #   MEASURE:GET:POLARIZATION?  -> z. B. "8,77.00"
+        #   SYSTEM:SET:POLARIZATION:77GHZ:V
+        # Erstes Feld = erkannte Polarisation (5=H, 8=V, 7=P45, 6=M45),
+        # "0,0.00" = kein Radarsignal erkannt.
+        # SYSTEM:GET:POLARIZATION:77GHZ:SETTING? liefert laut Handbuch
+        # nur die zuletzt gesetzte Einstellung und taugt daher nicht
+        # als Messergebnis.
         self.polarization = (
             self.radest
             .measure_get_polarization_77ghz()
         )
 
-        # Tatsächlich eingestellte Polarisation abfragen
-        polarization_answer = (
-            self.radest
-            .system_get_polarization_77ghz_setting()
+        detected_code = (
+            str(self.polarization)
+            .strip()
+            .strip('"')
+            .split(",")[0]
+            .strip()
+            .upper()
         )
+
+        if detected_code == "0":
+            raise RuntimeError(
+                "Das RadEsT hat keine Polarisation erkannt "
+                f"(Antwort {self.polarization}). Es hat während der "
+                "Messung kein Radarsignal empfangen. Prüfen, ob das "
+                "Radar sendet und auf das RadEsT ausgerichtet ist, "
+                "dann Precheck erneut starten."
+            )
 
         polarization_setting = self._parse_polarization(
-            polarization_answer
+            self.polarization
         )
-
-        if polarization_setting is None:
-            polarization_setting = self._parse_polarization(
-                self.polarization
-            )
 
         if polarization_setting is None:
             raise RuntimeError(
-                "Polarisation des RadEsT nicht erkannt. "
-                f"Messantwort: {self.polarization}, "
-                f"Einstellung: {polarization_answer}"
+                "Unbekannte Polarisationsantwort des RadEsT: "
+                f"{self.polarization}"
             )
+
+        self.radest.system_set_polarization_77ghz(
+            polarization_setting
+        )
 
         # Kalibriertes Antennenpaar für die spätere RCS-Messung
         tx_antenna, rx_antenna = (
@@ -589,7 +605,6 @@ class TestController:
             "phase": "frequency",
             "polarization": self.polarization,
             "polarization_setting": polarization_setting,
-            "polarization_setting_answer": polarization_answer,
             "tx_antenna": tx_antenna,
             "rx_antenna": rx_antenna
         }
