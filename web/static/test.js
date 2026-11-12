@@ -707,8 +707,8 @@ function drawChart(canvasId = "liveChart") {
     context.clearRect(0, 0, width, height);
     const pad = {left: 48, right: 18, top: 28, bottom: 34};
     const points = uiState.samples.filter(point => Number.isFinite(point.time) && Number.isFinite(point.radest));
-    context.font = "12px Arial";
-    context.fillStyle = "#63756d";
+    context.font = "12px 'Noto Sans', Arial, sans-serif";
+    context.fillStyle = "#4F5B57";
     if (points.length < 2) {
         window.DistanceChartTooltip?.clear(canvas);
         context.textAlign = "center";
@@ -725,20 +725,20 @@ function drawChart(canvasId = "liveChart") {
     const maxX = Math.max(points.at(-1).time, minX + 0.1);
     const x = value => pad.left + (value - minX) / (maxX - minX) * (width - pad.left - pad.right);
     const y = value => pad.top + (maxY - value) / (maxY - minY) * (height - pad.top - pad.bottom);
-    context.strokeStyle = "#d5e5dc";
+    context.strokeStyle = "#D3E0DA";
     context.lineWidth = 1;
     for (let index = 0; index <= 4; index++) {
         const py = pad.top + index / 4 * (height - pad.top - pad.bottom);
         context.beginPath(); context.moveTo(pad.left, py); context.lineTo(width - pad.right, py); context.stroke();
-        context.fillStyle = "#63756d"; context.textAlign = "right";
+        context.fillStyle = "#4F5B57"; context.textAlign = "right";
         context.fillText((maxY - index / 4 * (maxY - minY)).toFixed(1), pad.left - 7, py + 4);
     }
     drawPhaseMarkers(context, points, x, pad, height);
     drawSeries(context, points, "radest", x, y, "#008143");
-    drawSeries(context, points, "vehicle", x, y, "#d58a00");
+    drawSeries(context, points, "vehicle", x, y, "#002E55");
     context.textAlign = "left"; context.fillStyle = "#008143"; context.fillText("— RadEsT", pad.left, 15);
-    context.fillStyle = "#d58a00"; context.fillText("— Fahrzeug", pad.left + 85, 15);
-    context.fillStyle = "#63756d";
+    context.fillStyle = "#002E55"; context.fillText("— Fahrzeug", pad.left + 85, 15);
+    context.fillStyle = "#4F5B57";
     context.textAlign = "left"; context.fillText("0 s", pad.left, height - 10);
     context.textAlign = "right"; context.fillText((maxX - minX).toFixed(1) + " s", width - pad.right, height - 10);
     context.save();
@@ -769,15 +769,15 @@ function drawPhaseMarkers(context, points, x, pad, height) {
         if (previous !== null) {
             context.save();
             context.setLineDash([4, 4]);
-            context.strokeStyle = "#9cb3a8";
+            context.strokeStyle = "#A5C4BA";
             context.beginPath();
             context.moveTo(px, pad.top);
             context.lineTo(px, height - pad.bottom);
             context.stroke();
             context.restore();
         }
-        context.fillStyle = "#63756d";
-        context.font = "11px Arial";
+        context.fillStyle = "#4F5B57";
+        context.font = "11px 'Noto Sans', Arial, sans-serif";
         context.textAlign = "left";
         context.fillText(labels[point.phase] || point.phase, Math.min(px + 4, context.canvas.clientWidth - 85), pad.top + 12);
         previous = point.phase;
