@@ -494,7 +494,8 @@ class TestController:
         }
 
 
-    # Antwortcodes von MEASURE:GET:POLARIZATION? -> Einstellung
+    # Bekannte Polarisationsangaben des RadEsT -> Einstellung.
+    # Zahlencodes: 5=H, 8=V, 7=+45, 6=-45.
     POLARIZATION_CODES = {
         "5": "H",
         "8": "V",
@@ -502,80 +503,78 @@ class TestController:
         "6": "M45",
         "H": "H",
         "V": "V",
+        "HOR": "H",
+        "HORIZONTAL": "H",
+        "VER": "V",
+        "VERT": "V",
+        "VERTICAL": "V",
         "P45": "P45",
-        "M45": "M45"
+        "+45": "P45",
+        "M45": "M45",
+        "-45": "M45"
     }
 
-    # Wie oft die Polarisation abgefragt wird, wenn das RadEsT
-    # kein Radarsignal erkennt (Antwort "0,0.00").
-    POLARIZATION_ATTEMPTS = 3
-    POLARIZATION_RETRY_DELAY_S = 1.0
 
+    @classmethod
+    def _parse_polarization(cls, answer):
 
-    @staticmethod
-    def _polarization_code(answer):
+        if answer is None:
+            return None
 
-        return (
-            str(answer)
-            .strip()
-            .strip('"')
-            .split(",")[0]
-            .strip()
-            .upper()
-        )
+        text = str(answer).strip().strip('"').upper()
+
+        # Ganze Antwort, z. B. "H" oder "P45"
+        if text in cls.POLARIZATION_CODES:
+            return cls.POLARIZATION_CODES[text]
+
+        # Erstes Feld, z. B. "5,-20.31"
+        first = text.split(",")[0].strip()
+
+        if first in cls.POLARIZATION_CODES:
+            return cls.POLARIZATION_CODES[first]
+
+        # Wort in längerer Antwort, z. B. "POLARIZATION:77GHZ:V"
+        for token in re.split(r"[\s,:;=]+", text):
+            if token in cls.POLARIZATION_CODES and not token.isdigit():
+                return cls.POLARIZATION_CODES[token]
+
+        return None
 
 
     def measure_precheck_polarization(self):
 
         self._check_connection()
 
-        polarization_setting = None
+        # Messung starten. Das RadEsT stellt die erkannte
+        # Polarisation danach selbst ein.
+        self.polarization = (
+            self.radest
+            .measure_get_polarization_77ghz()
+        )
 
-        for attempt in range(self.POLARIZATION_ATTEMPTS):
+        # Tatsächlich eingestellte Polarisation abfragen
+        polarization_answer = (
+            self.radest
+            .system_get_polarization_77ghz_setting()
+        )
 
-            if attempt > 0:
-                time.sleep(self.POLARIZATION_RETRY_DELAY_S)
+        polarization_setting = self._parse_polarization(
+            polarization_answer
+        )
 
-            self.polarization = (
-                self.radest
-                .measure_get_polarization_77ghz()
-            )
-
-            detected_code = self._polarization_code(
+        if polarization_setting is None:
+            polarization_setting = self._parse_polarization(
                 self.polarization
             )
 
-            polarization_setting = self.POLARIZATION_CODES.get(
-                detected_code
-            )
-
-            # Code 0 = kein Signal erkannt, erneut versuchen
-            if detected_code != "0":
-                break
-
         if polarization_setting is None:
-
-            if detected_code == "0":
-                raise RuntimeError(
-                    "Das RadEsT empfängt kein Radarsignal, die "
-                    "Polarisation konnte nicht bestimmt werden "
-                    f"(Antwort {self.polarization}, "
-                    f"{self.POLARIZATION_ATTEMPTS} Versuche). "
-                    "Bitte prüfen, ob das Fahrzeugradar sendet "
-                    "(Zündung an, Radar aktiv, keine Fehler) und ob "
-                    "es auf das RadEsT ausgerichtet ist. Danach "
-                    "Precheck erneut starten."
-                )
-
             raise RuntimeError(
-                "Unbekannte Polarisationsantwort des RadEsT: "
-                f"{self.polarization}"
+                "Polarisation des RadEsT nicht erkannt. "
+                f"Messantwort: {self.polarization}, "
+                f"Einstellung: {polarization_answer}"
             )
 
-        self.radest.system_set_polarization_77ghz(
-            polarization_setting
-        )
-
+        # Kalibriertes Antennenpaar für die spätere RCS-Messung
         tx_antenna, rx_antenna = (
             (6, 7)
             if polarization_setting in {"H", "V"}
@@ -589,6 +588,7 @@ class TestController:
             "phase": "frequency",
             "polarization": self.polarization,
             "polarization_setting": polarization_setting,
+            "polarization_setting_answer": polarization_answer,
             "tx_antenna": tx_antenna,
             "rx_antenna": rx_antenna
         }
