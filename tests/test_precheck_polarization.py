@@ -49,5 +49,17 @@ class PrecheckPolarizationTest(unittest.TestCase):
         controller.radest.system_set_tx.assert_not_called()
 
 
+class RcsLimitsTest(unittest.TestCase):
+
+    def test_valid_limits(self):
+        limits = TestController._parse_rcs_limits("V,20.5,-10.0,40.0")
+        self.assertEqual(limits["eirp_dbm"], 20.5)
+
+    def test_minus_inf_gives_clear_error(self):
+        with self.assertRaises(RuntimeError) as context:
+            TestController._parse_rcs_limits("V,-inf,-inf,-inf")
+        self.assertIn("keine Radarleistung", str(context.exception))
+
+
 if __name__ == "__main__":
     unittest.main()

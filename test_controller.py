@@ -1,4 +1,5 @@
 import copy
+import math
 import re
 import threading
 import time
@@ -710,12 +711,26 @@ class TestController:
                 f"{answer}"
             )
 
-        return {
+        limits = {
             "polarization": values[0],
             "eirp_dbm": float(values[1]),
             "rcs_min_dbsm": float(values[2]),
             "rcs_max_dbsm": float(values[3])
         }
+
+        # -inf/nan heißt: das RadEsT misst keine Radarleistung.
+        # Ohne diese Prüfung scheitert die Web-Antwort an JSON.
+        if not all(
+            math.isfinite(limits[key])
+            for key in ("eirp_dbm", "rcs_min_dbsm", "rcs_max_dbsm")
+        ):
+            raise RuntimeError(
+                "Das RadEsT misst keine Radarleistung, RCS-Grenzen "
+                f"ungültig (Antwort {answer}). Das RadEsT empfängt "
+                "kein Radarsignal."
+            )
+
+        return limits
 
 
     @staticmethod
