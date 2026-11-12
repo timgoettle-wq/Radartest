@@ -317,13 +317,43 @@ function formatPolarization(value) {
     return labels[code] || raw;
 }
 
+function formatAirgap(value) {
+    return Number(value).toFixed(2).replace(".", ",") + "\u00a0m";
+}
+
+// Airgap ist nach einem RadEsT-Neustart 0.00 m; dann schlägt der Precheck fehl.
+// Das Feld zeigt den zuletzt festgelegten Wert (auf dem Pi gespeichert).
+async function loadPrecheckSettings() {
+    try {
+        const data = await apiRequest("/api/precheck/settings");
+        if (data.airgap_m !== null && data.airgap_m !== undefined) {
+            $("airgapInput").value = Number(data.airgap_m).toFixed(2);
+        }
+    } catch {
+        // Standardwert im Feld bleibt stehen.
+    }
+}
+
+function readAirgapInput() {
+    const input = $("airgapInput");
+    const value = Number(String(input.value).replace(",", "."));
+    if (input.value === "" || !Number.isFinite(value) || value < 0.01 || value > 10) {
+        input.focus();
+        throw new Error("Airgap bitte als Zahl zwischen 0,01 m und 10 m eingeben.");
+    }
+    return value;
+}
+
 function renderPrecheck(data) {
     const skipped = Boolean(data.skipped);
     $("precheckResult").hidden = false;
     $("precheckSummary").className = "result-banner " + (skipped ? "warning" : "success");
+    const airgap = Number(data.airgap_m);
     $("precheckSummary").textContent = skipped
         ? "Precheck bewusst übersprungen und im TestRun dokumentiert."
-        : "Precheck abgeschlossen – RadEsT-Werte wurden erfasst.";
+        : Number.isFinite(airgap) && data.airgap_m !== null && data.airgap_m !== undefined
+            ? `Precheck abgeschlossen – Airgap ${formatAirgap(airgap)} gesetzt, RadEsT-Werte wurden erfasst.`
+            : "Precheck abgeschlossen – RadEsT-Werte wurden erfasst.";
     $("precheckConnection").textContent = skipped ? "Nicht geprüft" : "✓ Verbunden";
     $("frequency").textContent = skipped ? "Übersprungen" : formatFrequency(data.frequency_range);
     $("polarization").textContent = skipped ? "Übersprungen" : formatPolarization(data.polarization);
@@ -417,6 +447,14 @@ function updatePrecheckProgress(activePhase = null, completedPhases = [], errorP
 
 async function runPrecheck() {
     clearError();
+    let airgap;
+    try {
+        airgap = readAirgapInput();
+    } catch (error) {
+        showError(error.message);
+        return;
+    }
+    $("airgapInput").disabled = true;
     setBusy($("precheckButton"), true, "Precheck läuft …", "Precheck starten");
     $("skipPrecheckButton").disabled = true;
     $("precheckResult").hidden = true;
@@ -424,7 +462,7 @@ async function runPrecheck() {
     const completedPhases = [];
     precheckTimer.elapsed = {};
     try {
-        await apiRequest("/api/precheck/start", {method: "POST"});
+        await apiRequest(`/api/precheck/start?airgap_m=${encodeURIComponent(airgap)}`, {method: "POST"});
         updatePrecheckProgress(activePhase, completedPhases);
         await apiRequest("/api/precheck/polarization", {method: "POST"});
         completedPhases.push("polarization");
@@ -445,8 +483,10 @@ async function runPrecheck() {
         $("precheckButton").disabled = false;
         $("skipPrecheckButton").disabled = true;
         $("toTestsButton").disabled = false;
+        $("airgapInput").disabled = false;
         updateStepper();
     } catch (error) {
+        $("airgapInput").disabled = false;
         updatePrecheckProgress(null, completedPhases, activePhase);
         setBusy($("precheckButton"), false, "", "Precheck starten");
         $("skipPrecheckButton").disabled = false;
@@ -1109,3 +1149,4 @@ window.addEventListener("resize", () => {
 
 updateHeader();
 restoreStatus();
+loadPrecheckSettings();

@@ -342,6 +342,9 @@ function renderPrecheck(precheck, status) {
     }
     const values = document.createElement("div");
     values.className = "compact-facts";
+    if (precheck.airgap_m !== null && precheck.airgap_m !== undefined) {
+        values.append(compactFact("Airgap", Number(precheck.airgap_m).toFixed(2).replace(".", ",") + " m"));
+    }
     values.append(
         compactFact("Polarisation", formatPolarization(precheck.polarization)),
         compactFact("Frequenzbereich", formatPrecheckValue(precheck.frequency_range, "GHz")),

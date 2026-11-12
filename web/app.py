@@ -5,6 +5,7 @@ from html import escape
 from fastapi.staticfiles import StaticFiles
 from web.database_api import make_database_router
 from functools import wraps
+from typing import Optional
 
 from fastapi import (
     FastAPI,
@@ -16,6 +17,7 @@ from fastapi.responses import HTMLResponse
 
 from database.database import get_vehicles
 from test_controller import TestController
+from radest.settings import load_airgap_m
 from web.results_api import router as results_router
 from web.system_time import make_system_time_router
 
@@ -360,10 +362,34 @@ def _run_precheck_phase(method_name):
         )
 
 
+@app.get("/api/precheck/settings")
+def get_precheck_settings():
+    # Zuletzt festgelegter Airgap, damit das Feld vorbelegt ist.
+    return {"airgap_m": load_airgap_m()}
+
+
 @app.post("/api/precheck/start")
 @serialized_controller_access
-def start_precheck():
-    return _run_precheck_phase("start_precheck")
+def start_precheck(airgap_m: Optional[float] = None):
+
+    if controller is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Testsystem ist nicht verbunden"
+        )
+
+    try:
+        return controller.start_precheck(airgap_m)
+    except ValueError as error:
+        raise HTTPException(
+            status_code=400,
+            detail=str(error)
+        )
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=str(error)
+        )
 
 
 @app.post("/api/precheck/polarization")

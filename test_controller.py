@@ -6,6 +6,7 @@ import time
 from diagnostics.vehicle import VehicleDiagnostic
 from database.database import get_vehicle
 from radest.device import RadestDevice
+from radest.settings import load_airgap_m, save_airgap_m, validate_airgap_m
 from measurement_logger import MeasurementLogger
 from test_run import TestRun
 
@@ -463,23 +464,31 @@ class TestController:
     # PRECHECK
     # ==================================================
 
-    def run_precheck(self):
+    def run_precheck(self, airgap_m=None):
 
-        self.start_precheck()
+        self.start_precheck(airgap_m)
         self.measure_precheck_polarization()
         self.measure_precheck_frequency()
         return self.measure_precheck_power()
 
 
-    def start_precheck(self):
+    def start_precheck(self, airgap_m=None):
 
         self._check_connection()
+
+        # Ohne Angabe gilt der zuletzt festgelegte Wert (radest_settings.json).
+        airgap_m = (
+            load_airgap_m()
+            if airgap_m is None
+            else validate_airgap_m(airgap_m)
+        )
 
         self.precheck_done = False
         self.precheck_skipped = False
         self.polarization = None
         self.frequency_range = None
         self.power = None
+        self.airgap_m = None
         self.static_rcs_limits = None
         self.static_rcs_dbsm = None
         self._static_rcs_prepared_distance = None
@@ -488,10 +497,33 @@ class TestController:
         self.dynamic_rcs_constant_state = None
         self._dynamic_rcs_prepared_configuration = None
 
+        self.airgap_m = self._set_airgap(airgap_m)
+        save_airgap_m(airgap_m)
+
         return {
             "status": "running",
-            "phase": "polarization"
+            "phase": "polarization",
+            "airgap_m": self.airgap_m
         }
+
+
+    def _set_airgap(self, airgap_m):
+
+        self.radest.set_airgap_distance(f"{airgap_m:.2f}")
+
+        try:
+            readback = self.radest.get_airgap_distance()
+        except (TypeError, ValueError):
+            # Rueckfrage nicht auswertbar: gesetzten Wert dokumentieren.
+            return airgap_m
+
+        if abs(readback - airgap_m) > 0.005:
+            raise RuntimeError(
+                f"RadEsT hat den Airgap nicht übernommen "
+                f"(gesetzt {airgap_m:.2f} m, gelesen {readback:.2f} m)."
+            )
+
+        return readback
 
 
     def measure_precheck_polarization(self):
@@ -583,6 +615,7 @@ class TestController:
         result = {
             "status": "completed",
             "skipped": False,
+            "airgap_m": self.airgap_m,
             "polarization": self.polarization,
             "frequency_range": self.frequency_range,
             "power": self.power
@@ -603,6 +636,7 @@ class TestController:
         self.precheck_done = True
         self.precheck_skipped = True
 
+        self.airgap_m = None
         self.polarization = None
         self.frequency_range = None
         self.power = None
@@ -635,6 +669,9 @@ class TestController:
     def get_precheck_result(self):
 
         return {
+
+            "airgap_m":
+                self.airgap_m,
 
             "polarization":
                 self.polarization,

@@ -232,6 +232,8 @@ table {width:100%;border-collapse:collapse;}th,td {padding:10px;border-bottom:1p
 .test-type-card label>span {font-weight:400;color:var(--text-muted);}
 .parameter-grid {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;min-width:0;}
 .static-parameter-grid {grid-template-columns:1fr;}
+.precheck-settings {grid-template-columns:minmax(0,320px);gap:6px;margin:22px 0 18px;}
+.precheck-settings .field-hint {margin:0;color:var(--text-muted);font-size:13px;line-height:1.45;}
 .parameter-grid label {min-width:0;}
 .parameter-grid input {display:block;width:100%;min-width:0;}
 .rcs-limit-panel {display:flex;flex-direction:column;gap:14px;padding:16px;border:1px solid var(--green-border);border-radius:8px;background:#f1f8f4;}
