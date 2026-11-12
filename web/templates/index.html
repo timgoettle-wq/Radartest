@@ -56,7 +56,10 @@
             <div class="selection-panel">
                 <label for="vehicle">Fahrzeug</label>
                 <select id="vehicle">__VEHICLE_OPTIONS__</select>
-                <button id="connectButton" class="primary large-action" type="button">Prüfung starten</button>
+                <div class="step-actions">
+                    <button id="connectButton" class="primary large-action step-start" type="button">Prüfung starten</button>
+                    <button id="toQuickCheckButton" class="primary large-action step-next" type="button" disabled>Weiter zum Quick Check</button>
+                </div>
             </div>
             <div id="connectionResult" class="result-panel" hidden>
                 <h2>Verbindungsprüfung</h2>
@@ -65,13 +68,16 @@
                     <div id="checkDiagnosis" class="check-row"><i></i><span>Fahrzeugdiagnose verbunden</span></div>
                     <div id="checkSignals" class="check-row"><i></i><span id="signals">Messsignale werden geprüft</span></div>
                 </div>
-                <div class="screen-actions"><span></span><button id="toQuickCheckButton" class="primary" type="button">Weiter zum Quick Check</button></div>
             </div>
         </section>
 
         <section id="screenQuickCheck" class="workflow-screen" hidden>
             <div class="screen-heading"><div><p class="eyebrow">Schritt 2</p><h1>Fahrzeug Quick Check</h1><p>Steuergeräteidentifikation und Fehlerspeicher vor der Radarprüfung erfassen.</p></div></div>
-            <button id="quickCheckButton" class="primary large-action" type="button">Quick Check starten</button>
+            <div class="step-actions">
+                <button id="quickCheckButton" class="primary large-action step-start" type="button">Quick Check starten</button>
+                <button id="toPrecheckButton" class="primary large-action step-next" type="button" disabled>Weiter zum Precheck</button>
+                <button class="secondary step-back" data-go-step="1" type="button">Zurück</button>
+            </div>
             <div id="quickCheckResult" class="result-panel" hidden>
                 <div id="quickCheckSummary" class="result-banner"></div>
                 <div class="result-columns">
@@ -85,14 +91,15 @@
                     </article>
                 </div>
             </div>
-            <div class="screen-actions"><button class="secondary" data-go-step="1" type="button">Zurück</button><button id="toPrecheckButton" class="primary" type="button" disabled>Weiter zum Precheck</button></div>
         </section>
 
         <section id="screenPrecheck" class="workflow-screen" hidden>
             <div class="screen-heading"><div><p class="eyebrow">Schritt 3</p><h1>RadEsT Precheck</h1><p>Aktuelle RadEsT-Messwerte erfassen und im TestRun dokumentieren.</p></div></div>
-            <div class="precheck-actions">
-                <button id="precheckButton" class="primary large-action" type="button">Precheck starten</button>
+            <div class="step-actions precheck-actions">
+                <button id="precheckButton" class="primary large-action step-start" type="button">Precheck starten</button>
+                <button id="toTestsButton" class="primary large-action step-next" type="button" disabled>Weiter zur Prüfung</button>
                 <button id="skipPrecheckButton" class="secondary" type="button">Precheck überspringen</button>
+                <button class="secondary step-back" data-go-step="2" type="button">Zurück</button>
             </div>
             <div id="precheckProgress" class="precheck-progress" aria-live="polite" hidden>
                 <div data-precheck-phase="polarization"><span>1</span><strong>Polarisation</strong></div>
@@ -108,7 +115,6 @@
                     <div class="metric-card"><span>Empfangsleistung</span><strong id="power">–</strong></div>
                 </div>
             </div>
-            <div class="screen-actions"><button class="secondary" data-go-step="2" type="button">Zurück</button><button id="toTestsButton" class="primary" type="button" disabled>Weiter zur Prüfung</button></div>
         </section>
 
         <section id="screenTests" class="workflow-screen workbench-screen" hidden>
