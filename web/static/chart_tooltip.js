@@ -14,12 +14,12 @@
                 z-index: 1000;
                 min-width: 175px;
                 padding: 9px 11px;
-                border: 1px solid #abcdb9;
-                border-radius: 5px;
-                background: rgba(255, 255, 255, .97);
+                border: 1px solid #A5C4BA;
+                border-radius: 8px;
+                background: #FFFFFF;
                 box-shadow: 0 5px 18px rgba(0, 59, 50, .16);
-                color: #003b32;
-                font: 12px/1.45 Arial, sans-serif;
+                color: #000000;
+                font: 12px/1.45 "Noto Sans", Arial, sans-serif;
                 pointer-events: none;
             }
             .distance-chart-tooltip strong {
@@ -41,7 +41,7 @@
                 background: #008143;
             }
             .distance-chart-marker.vehicle {
-                background: #d58a00;
+                background: #002E55;
             }
             canvas[data-distance-tooltip] {
                 cursor: crosshair;

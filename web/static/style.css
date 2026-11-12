@@ -889,3 +889,294 @@ button.primary,.database-page button.secondary,.database-page button.danger,.res
     .database-page #detailContent .disclosure-row summary .mono,
     .database-page #detailContent .disclosure-row summary code {grid-column:1;}
 }
+
+
+/* ==================================================================
+   DEKRA Corporate Design (Richtlinie 04 | 07.2026)
+   - Schrift: Noto Sans, lokal eingebunden (Pi ohne Internet, DSGVO).
+   - Farben: DEKRA Logo Grün, Dunkelgrün, Hellgrün, Kampagnengrün;
+     Akzentfarben Dunkelblau, Orange, Gelb nur sparsam.
+     Keine Verläufe, keine transparenten Markenfarben.
+   - Logo weiß auf DEKRA Logo Grün, oben links, Link zur Startseite,
+     Mindestabstand 8 px vertikal / 16 px horizontal.
+   - Buttons mit vollständig abgerundeten Ecken; keine Versalien,
+     keine Unterstreichungen als Gestaltungsmittel; Kontraste WCAG AA.
+   Der AEB-Prüfstand hat eigenes Inline-CSS und ist hiervon nicht betroffen.
+   ================================================================== */
+@font-face {font-family:"Noto Sans";font-style:normal;font-weight:400;font-display:swap;src:url(/static/fonts/noto-sans-latin-400-normal.woff2) format("woff2");}
+@font-face {font-family:"Noto Sans";font-style:normal;font-weight:600;font-display:swap;src:url(/static/fonts/noto-sans-latin-600-normal.woff2) format("woff2");}
+@font-face {font-family:"Noto Sans";font-style:normal;font-weight:700;font-display:swap;src:url(/static/fonts/noto-sans-latin-700-normal.woff2) format("woff2");}
+@font-face {font-family:"Noto Sans";font-style:normal;font-weight:900;font-display:swap;src:url(/static/fonts/noto-sans-latin-900-normal.woff2) format("woff2");}
+
+:root {
+    --dekra-logo-green:#008143;
+    --dekra-dark-green:#006B52;
+    --dekra-campaign-green:#014031;
+    --dekra-light-green:#64B32C;
+    --dekra-light-green-40:#C3E1B1;
+    --dekra-dark-green-40:#A5C4BA;
+    --dekra-bright-green:#B0FD78;
+    --dekra-blue:#002E55;
+    --dekra-orange:#EF7C00;
+    --dekra-yellow:#FFCC00;
+    --dekra-yellow-40:#FFEBAE;
+    --dekra-error:#B0282E;
+    --dekra-error-surface:#FBE9E9;
+
+    --green-primary:var(--dekra-logo-green);
+    --green-dark:var(--dekra-dark-green);
+    --green-light:var(--dekra-light-green);
+    --green-surface:#FFFFFF;
+    --green-border:#D3E0DA;
+    --field-border:#7F948B;
+    --text-primary:#000000;
+    --text-muted:#4F5B57;
+    --dekra-font:"Noto Sans",Arial,sans-serif;
+}
+
+/* Grundschrift und Flächen */
+.test-app,.database-page,.results-page {
+    font-family:var(--dekra-font);
+    background:#FFFFFF;
+    color:var(--text-primary);
+    line-height:1.5;
+}
+.test-app button,.test-app input,.test-app select,.test-app textarea,
+.database-page button,.database-page input,.database-page select,.database-page textarea,
+.results-page button,.results-page input,.results-page select {font-family:inherit;}
+.test-app h1,.test-app h2,.test-app h3,
+.database-page h1,.database-page h2,.database-page h3,
+.results-page h1,.results-page h2,.results-page h3 {letter-spacing:0;line-height:1.25;}
+.screen-heading h1,.page-header h1,
+.database-page .page-header h1,.results-page .page-header h1 {color:var(--dekra-dark-green);font-weight:700;font-size:30px;}
+.test-app h2,.database-page h2,.database-page h3,.results-page h2 {font-weight:700;color:var(--text-primary);}
+
+/* Keine Versalien: Bezeichner in normaler Schreibweise, SemiBold */
+.eyebrow,.fact span,.description-box>span,.metric-card>span,.rcs-limit-values span,
+.result-context span,.log-output span,.results-table th,.system-strip>span:first-child {
+    text-transform:none!important;letter-spacing:0!important;
+}
+.eyebrow {color:var(--dekra-logo-green)!important;font-size:14px;font-weight:600;}
+.fact span,.description-box>span,.metric-card>span,.rcs-limit-values span,
+.result-context span,.log-output span {color:var(--text-muted);font-size:13px;font-weight:600;}
+
+/* Gedämpfte Texte einheitlich (vorher teils bläuliche Grautöne) */
+.notice,.screen-heading p:not(.eyebrow),.page-header p,.section-heading p,.entity-header p,
+.danger-zone p,.nested-main span,.list-row span,.reference-row span,.empty-inline,.muted,
+.form-hint,.empty-state,.database-page footer,.section-title>span,.app-message,.status-message,
+.breadcrumbs,.measurement-details dt,.diagnostic-group span,.results-table td small {color:var(--text-muted);}
+
+/* Kopfzeile: Logo weiß auf DEKRA Logo Grün */
+.app-header {background:var(--dekra-logo-green);box-shadow:none;}
+.header-main {min-height:72px;padding:0 32px;grid-template-columns:auto minmax(0,1fr) auto;}
+.app-header .app-title {display:flex;align-items:center;padding:8px 16px 8px 0;text-decoration:none;}
+.app-header .app-title:focus-visible {outline:2px solid #FFFFFF;outline-offset:2px;border-radius:4px;}
+.app-header .utility-nav {grid-column:3;}
+.app-header .utility-nav a {
+    color:#FFFFFF;font-size:15px;font-weight:600;text-decoration:none;
+    padding:6px 0;border-bottom:3px solid transparent;
+}
+.app-header .utility-nav a:hover {color:#FFFFFF;text-decoration:none;border-bottom-color:var(--dekra-light-green-40);}
+.app-header .utility-nav a.active {color:#FFFFFF;text-decoration:none;border-bottom-color:#FFFFFF;}
+.app-header .utility-nav a:focus-visible {outline:2px solid #FFFFFF;outline-offset:3px;}
+.session-summary {color:#FFFFFF;}
+.summary-divider {opacity:1;color:var(--dekra-dark-green-40);}
+.system-strip {background:var(--dekra-dark-green);color:#FFFFFF;}
+.system-strip>span:first-child {opacity:1;font-weight:600;}
+.database-context-strip:empty,.results-context-strip:empty {min-height:8px;}
+.connection-label i,.system-indicator i {background:var(--dekra-dark-green-40);box-shadow:none;}
+.connection-label.connected i,.system-indicator.ok i {background:var(--dekra-bright-green);box-shadow:none;}
+.system-indicator.warning i {background:var(--dekra-yellow);}
+.system-indicator.error i {background:#FF8A80;}
+.app-header .header-action {
+    border-radius:999px;border:1px solid #FFFFFF;background:transparent;color:#FFFFFF;
+    padding:4px 12px;font-weight:600;
+}
+.app-header .header-action:hover:not(:disabled) {background:#FFFFFF;color:var(--dekra-dark-green);}
+.app-header .header-action:disabled {opacity:1;border-color:var(--dekra-dark-green-40);color:var(--dekra-dark-green-40);}
+
+/* Buttons: Pillenform, Default Logo Grün, Hover Dunkelgrün, Pressed Kampagnengrün */
+.test-app button.primary,.database-page button.primary,.results-page button.primary,
+.button-link.primary {
+    margin:0;padding:10px 22px;border:2px solid var(--dekra-logo-green);border-radius:999px;
+    background:var(--dekra-logo-green);color:#FFFFFF;font-weight:700;
+}
+.test-app button.primary:hover:not(:disabled),.database-page button.primary:hover:not(:disabled),
+.results-page button.primary:hover:not(:disabled),.button-link.primary:hover {
+    background:var(--dekra-dark-green);border-color:var(--dekra-dark-green);
+}
+.test-app button.primary:active:not(:disabled),.database-page button.primary:active:not(:disabled),
+.results-page button.primary:active:not(:disabled),.button-link.primary:active {
+    background:var(--dekra-campaign-green);border-color:var(--dekra-campaign-green);
+}
+.test-app button.secondary,.database-page button.secondary,.results-page button.secondary,
+.button-link.secondary,.small-button,.database-page .small-button {
+    margin:0;padding:10px 22px;border:2px solid var(--dekra-logo-green);border-radius:999px;
+    background:#FFFFFF;color:var(--dekra-logo-green);font-weight:700;
+}
+.small-button,.database-page .small-button {padding:5px 14px;font-size:13px;}
+.test-app button.secondary:hover:not(:disabled),.database-page button.secondary:hover:not(:disabled),
+.results-page button.secondary:hover:not(:disabled),.button-link.secondary:hover,.small-button:hover:not(:disabled) {
+    border-color:var(--dekra-dark-green);color:var(--dekra-dark-green);background:var(--dekra-light-green-40);
+}
+.test-app button.danger,.database-page button.danger,.results-page button.danger {
+    margin:0;padding:10px 22px;border:2px solid var(--dekra-error);border-radius:999px;
+    background:var(--dekra-error);color:#FFFFFF;font-weight:700;
+}
+.test-app button.danger:hover:not(:disabled),.database-page button.danger:hover:not(:disabled),
+.results-page button.danger:hover:not(:disabled) {background:#8C1D22;border-color:#8C1D22;}
+.danger.ghost,.database-page .dialog-actions .dialog-delete {
+    border:2px solid var(--dekra-error);border-radius:999px;background:#FFFFFF;color:var(--dekra-error);
+}
+.database-page .dialog-actions .dialog-delete:hover {background:var(--dekra-error-surface);}
+.test-app button.finish-button {
+    border:2px solid var(--dekra-dark-green);border-radius:999px;background:var(--dekra-dark-green);color:#FFFFFF;padding:10px 22px;
+}
+.test-app button.finish-button:hover:not(:disabled) {background:var(--dekra-campaign-green);border-color:var(--dekra-campaign-green);}
+.test-app button.primary:disabled,.database-page button.primary:disabled,.results-page button.primary:disabled,
+.test-app button.secondary:disabled,.database-page button.secondary:disabled,.results-page button.secondary:disabled,
+.test-app button.danger:disabled,.database-page button.danger:disabled,.test-app button.finish-button:disabled {
+    opacity:1;background:#E4ECE8;border-color:#E4ECE8;color:#5F6B66;cursor:not-allowed;
+}
+.link-button {color:var(--dekra-logo-green);border-radius:4px;}
+.link-button:hover {color:var(--dekra-dark-green);background:transparent;}
+.test-app button:not(:disabled):active {transform:none;}
+
+/* Sichtbarer Fokus für Tastaturbedienung (WCAG AA) */
+.test-app button:focus-visible,.database-page button:focus-visible,.results-page button:focus-visible,
+.test-app a:focus-visible,.database-page a:focus-visible,.results-page a:focus-visible,
+.database-page summary:focus-visible,.results-page summary:focus-visible {
+    outline:2px solid var(--dekra-dark-green);outline-offset:2px;
+}
+
+/* Eingabefelder: erkennbare Kontur (3:1), abgerundete Ecken */
+.test-app input,.test-app select,.database-page input,.database-page select,.database-page textarea,
+.results-page input,.results-page select,.sensor-selector select,
+#screenTests input,#screenVehicle select {
+    border:1px solid var(--field-border);border-radius:8px;background:#FFFFFF;color:var(--text-primary);
+}
+.test-app input:focus,.test-app select:focus,.database-page input:focus,.database-page select:focus,
+.database-page textarea:focus,.results-page input:focus,.results-page select:focus,
+.filter-bar input:focus,.filter-bar select:focus,.form-grid input:focus,.form-grid select:focus,
+.form-grid textarea:focus,.results-filter-bar input:focus,.results-filter-bar select:focus,
+.sensor-selector select:focus {
+    outline:2px solid var(--dekra-logo-green);outline-offset:0;border-color:var(--dekra-logo-green);
+}
+.test-app label,.filter-bar label,.form-grid label,.results-filter-bar label,.sensor-selector,
+.selection-panel label,.test-type-card>label,.parameter-grid label,.rcs-limit-panel>label {color:var(--text-primary);font-weight:600;}
+.test-type-card label>span,.rcs-limit-panel>label span {color:var(--text-muted);}
+
+/* Schrittanzeige */
+.test-app .workflow-shell > .stepper {border-bottom:1px solid var(--green-border);}
+.stepper button {color:var(--text-muted);font-weight:600;font-size:15px;background:transparent;border-bottom:3px solid transparent;}
+.stepper button span {background:#E4ECE8;color:var(--text-primary);font-weight:700;}
+.stepper li.active button {color:var(--dekra-logo-green);background:transparent;border-bottom-color:var(--dekra-logo-green);}
+.stepper li.active button span {background:var(--dekra-logo-green);color:#FFFFFF;}
+.stepper li.complete button {color:var(--dekra-dark-green);}
+.stepper li.complete button span {background:var(--dekra-light-green);color:var(--dekra-campaign-green);}
+.stepper li.locked button {color:#6E7773;background:transparent;}
+.stepper li.locked button span {background:#F0F3F2;color:#6E7773;}
+
+/* Prüfart-Auswahl */
+.test-mode-selector label {border-bottom:3px solid transparent;color:var(--text-primary);}
+.test-mode-selector label:has(input:checked) {color:var(--dekra-logo-green);border-bottom-color:var(--dekra-logo-green);background:transparent;}
+.test-mode-selector input {accent-color:var(--dekra-logo-green);}
+
+/* Tabs und Breadcrumbs ohne Unterstreichung */
+.tab {color:var(--text-muted);font-weight:600;}
+.tab.active {color:var(--dekra-logo-green);border-bottom-color:var(--dekra-logo-green);}
+.database-page .breadcrumb-link,.results-page .breadcrumb-link,.breadcrumb-button {color:var(--dekra-logo-green);font-weight:600;}
+.database-page .breadcrumb-link:hover,.results-page .breadcrumb-link:hover {color:var(--dekra-dark-green);text-decoration:none;}
+.database-page .breadcrumbs > span,.results-page .breadcrumbs > span {color:var(--text-muted);}
+
+/* Karten und Rahmen: einheitlich 12 px Radius, keine Schatten */
+.test-app .chart-card,.results-page .archive-chart-card,.vehicle-data-section,
+.results-page #runDetail .run-check-grid > .archive-card,.results-page #runDetail > .measurements-card,
+.results-page #measurementDetail .archive-metrics,.results-page #measurementDetail .archive-metadata,
+.results-page #measurementDetail .archive-chart-card,.results-table-wrap,
+.database-page .results-table-wrap,.results-page .results-table-wrap {border-radius:12px;box-shadow:none;}
+.database-page #detailContent .disclosure-list,.database-page #detailContent .nested-card,
+.database-page #detailContent .dtc-config-card,.results-page #runDetail .archive-card details,
+.results-page #runDetail .measurements-card .table-scroll {border-radius:8px;}
+.database-page dialog {border-radius:16px;box-shadow:none;}
+.database-page dialog::backdrop {background:rgba(1,64,49,.6);backdrop-filter:none;}
+.database-page .results-table-wrap,.results-page .results-table-wrap {overflow:hidden;}
+#liveChart,#resultChart,#archiveChart {background:#FFFFFF;}
+
+/* Tabellen */
+.results-table th,.identification-table th {
+    background:#FFFFFF;color:var(--text-primary);font-size:13px;font-weight:700;
+    border-bottom:2px solid var(--dekra-dark-green);
+}
+.results-table tbody tr:hover {background:#F2F7F4;}
+.vehicle-table-row td:first-child {color:var(--dekra-dark-green);font-weight:600;}
+
+/* Status-Kennzeichnungen */
+.status-pill {background:#E4ECE8;color:var(--text-primary);font-weight:600;}
+.status-pill.success {background:var(--dekra-light-green-40);color:var(--dekra-campaign-green);}
+.status-pill.warning {background:var(--dekra-yellow-40);color:#000000;}
+.status-pill.error {background:var(--dekra-error-surface);color:#8C1D22;}
+.live-badge {background:var(--dekra-light-green-40);color:var(--dekra-campaign-green);font-weight:600;}
+.live-badge i {background:var(--dekra-logo-green);}
+@keyframes live-pulse {50%{box-shadow:0 0 0 5px var(--dekra-light-green-40);}}
+.check-row.ok i {background:var(--dekra-logo-green);}
+.check-row.warning i {background:var(--dekra-orange);}
+.check-row.warning i::after {color:#000000;}
+.row-success td:last-child {color:var(--dekra-logo-green);}
+.row-warning td:last-child {color:#9A4F00;}
+.dtc-entry,.inline-warning,.danger-text {color:var(--dekra-error);}
+.error-message,#error {color:var(--dekra-error);}
+
+/* Hinweisboxen im Stil der Richtlinie: abgerundeter Rahmen mit Triangle */
+.result-banner,.archive-warning {
+    position:relative;padding:12px 16px 12px 38px;border:1px solid var(--dekra-dark-green);
+    border-radius:12px;background:#FFFFFF;color:var(--text-primary);font-weight:600;
+}
+.result-banner::before,.archive-warning::before {
+    content:"";position:absolute;left:15px;top:50%;transform:translateY(-50%);
+    border-left:12px solid var(--dekra-light-green);border-top:8px solid transparent;border-bottom:8px solid transparent;
+}
+.result-banner.success {background:#FFFFFF;color:var(--text-primary);border-color:var(--dekra-dark-green);}
+.result-banner.warning,.archive-warning {background:#FFFFFF;color:var(--text-primary);border-color:var(--dekra-orange);}
+.result-banner.warning::before,.archive-warning::before {border-left-color:var(--dekra-orange);}
+.result-banner.error {background:var(--dekra-error-surface);color:#8C1D22;border-color:var(--dekra-error);}
+.result-banner.error::before {border-left-color:var(--dekra-error);}
+.archive-dtc-list p {background:var(--dekra-error-surface);color:#8C1D22;border-radius:8px;}
+
+/* Precheck-Fortschritt */
+.precheck-progress div {background:#FFFFFF;border-color:var(--green-border);border-radius:12px;color:var(--text-muted);}
+.precheck-progress span {background:#E4ECE8;color:var(--text-primary);}
+.precheck-progress div.active {border-color:var(--dekra-logo-green);background:#FFFFFF;color:var(--dekra-dark-green);box-shadow:none;outline:1px solid var(--dekra-logo-green);}
+.precheck-progress div.active span {background:var(--dekra-logo-green);color:#FFFFFF;}
+.precheck-progress div.complete span {background:var(--dekra-light-green);color:var(--dekra-campaign-green);}
+.precheck-progress div.error {border-color:var(--dekra-error);background:var(--dekra-error-surface);color:#8C1D22;}
+.precheck-progress div.error span {background:var(--dekra-error);color:#FFFFFF;}
+.rcs-limit-panel {background:#FFFFFF;border-radius:12px;}
+.rcs-limit-values>div {background:#FFFFFF;}
+
+/* Kennwerte */
+.test-app .primary-metric {border-top:3px solid var(--dekra-logo-green);}
+.primary-metric strong {color:var(--dekra-dark-green);}
+.archive-card summary {color:var(--dekra-logo-green);}
+.database-page #detailContent .disclosure-row summary:hover {background:#F2F7F4;}
+.database-page .icon-button {color:var(--text-primary);border-radius:999px;}
+
+@media(max-width:900px){
+    .header-main {grid-template-columns:auto minmax(0,1fr);}
+    .app-header .utility-nav {grid-column:2;}
+    .session-summary {grid-column:1/-1;}
+}
+@media(max-width:650px){
+    .header-main {padding:8px 16px;grid-template-columns:1fr;}
+    .app-header .app-title {padding:8px 0;}
+    .app-header .utility-nav {grid-column:1;grid-row:2;justify-self:start;gap:18px;padding-bottom:4px;}
+    .session-summary {grid-row:3;}
+    .screen-heading h1,.page-header h1,.database-page .page-header h1,.results-page .page-header h1 {font-size:24px;}
+}
+.test-app input,.test-app select,.test-app textarea,.database-page input,.database-page select,
+.database-page textarea,.results-page input,.results-page select {font-weight:400;}
+.stepper button span {flex:0 0 auto;}
+@media(max-width:650px){
+    .stepper button {font-size:0;}
+    .stepper button span {font-size:12px;}
+}
