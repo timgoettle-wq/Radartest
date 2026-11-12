@@ -720,6 +720,16 @@ class TestController:
             for value in str(answer).strip().split(",")
         ]
 
+        if "cannot be covered" in str(answer).lower():
+            raise RuntimeError(
+                "Das RadEsT kann die RCS nicht über die ganze "
+                "Distanzspanne abdecken (Antwort "
+                f"{str(answer).strip()}). Die Dämpfung reicht nur für "
+                "einen begrenzten Bereich, etwa Faktor 15 bis 20 "
+                "zwischen kleinster und größter Distanz. Spanne "
+                "verkleinern oder in zwei Teilstrecken messen."
+            )
+
         if len(values) != 4:
             raise RuntimeError(
                 "RadEsT hat ungültige RCS-Grenzen zurückgegeben: "

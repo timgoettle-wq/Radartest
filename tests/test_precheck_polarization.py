@@ -61,6 +61,11 @@ class RcsLimitsTest(unittest.TestCase):
             TestController._parse_rcs_limits("V,-inf,-inf,-inf")
         self.assertIn("keine Radarleistung", str(context.exception))
 
+    def test_not_covered_gives_clear_error(self):
+        with self.assertRaises(RuntimeError) as context:
+            TestController._parse_rcs_limits('"RCS cannot be covered completely"')
+        self.assertIn("Distanzspanne", str(context.exception))
+
 
 if __name__ == "__main__":
     unittest.main()
