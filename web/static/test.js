@@ -330,14 +330,88 @@ function renderPrecheck(data) {
     $("power").textContent = skipped ? "Übersprungen" : formatPower(data.power);
 }
 
+// Messdauer laut RadEsT-Handbuch (S. 30/31) mit den Standardwerten
+// Warm-up 500 ms und Max-Hold-Intervall 1000 ms (werden nicht verändert).
+const PRECHECK_CYCLE_S = 0.5 + 1.0;
+const PRECHECK_DURATIONS_S = {
+    polarization: {min: 44 * PRECHECK_CYCLE_S, max: 44 * PRECHECK_CYCLE_S},
+    frequency: {min: 23 * PRECHECK_CYCLE_S, max: 69 * PRECHECK_CYCLE_S},
+    power: null
+};
+const precheckTimer = {phase: null, startedAt: 0, handle: null, elapsed: {}};
+
+function formatSeconds(seconds) {
+    const total = Math.max(0, Math.round(seconds));
+    return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+}
+
+function renderPrecheckTimer(item, phase, state) {
+    const timer = item.querySelector(".precheck-timer");
+    if (!timer) return;
+    const elapsed = precheckTimer.elapsed[phase];
+    if (elapsed === undefined) {
+        timer.hidden = true;
+        return;
+    }
+    timer.hidden = false;
+    const estimate = PRECHECK_DURATIONS_S[phase];
+    const bar = timer.querySelector(".precheck-bar");
+    const fill = bar.querySelector("i");
+    const text = timer.querySelector("small");
+    bar.hidden = !estimate;
+    if (state === "complete") {
+        fill.style.width = "100%";
+        text.textContent = `fertig nach ${formatSeconds(elapsed)}`;
+        return;
+    }
+    if (state === "error") {
+        text.textContent = `abgebrochen nach ${formatSeconds(elapsed)}`;
+        return;
+    }
+    if (!estimate) {
+        text.textContent = `läuft seit ${formatSeconds(elapsed)}`;
+        return;
+    }
+    fill.style.width = `${Math.min(elapsed / estimate.max, 0.99) * 100}%`;
+    if (elapsed >= estimate.max) {
+        text.textContent = `${formatSeconds(elapsed)} · dauert länger als erwartet`;
+    } else if (estimate.min === estimate.max) {
+        text.textContent = `${formatSeconds(elapsed)} von ca. ${formatSeconds(estimate.max)} · noch ca. ${formatSeconds(estimate.max - elapsed)}`;
+    } else if (elapsed < estimate.min) {
+        text.textContent = `${formatSeconds(elapsed)} · dauert ca. ${formatSeconds(estimate.min)}–${formatSeconds(estimate.max)}`;
+    } else {
+        text.textContent = `${formatSeconds(elapsed)} · noch höchstens ${formatSeconds(estimate.max - elapsed)}`;
+    }
+}
+
+function setPrecheckTimerPhase(phase) {
+    if (precheckTimer.phase) {
+        precheckTimer.elapsed[precheckTimer.phase] = (Date.now() - precheckTimer.startedAt) / 1000;
+    }
+    clearInterval(precheckTimer.handle);
+    precheckTimer.handle = null;
+    precheckTimer.phase = phase;
+    if (!phase) return;
+    precheckTimer.startedAt = Date.now();
+    precheckTimer.elapsed[phase] = 0;
+    precheckTimer.handle = setInterval(() => {
+        precheckTimer.elapsed[phase] = (Date.now() - precheckTimer.startedAt) / 1000;
+        const item = document.querySelector(`#precheckProgress [data-precheck-phase="${phase}"]`);
+        if (item) renderPrecheckTimer(item, phase, "active");
+    }, 250);
+}
+
 function updatePrecheckProgress(activePhase = null, completedPhases = [], errorPhase = null) {
     const progress = $("precheckProgress");
     progress.hidden = false;
+    setPrecheckTimerPhase(activePhase);
     progress.querySelectorAll("[data-precheck-phase]").forEach((item, index) => {
         const phase = item.dataset.precheckPhase;
         const completed = completedPhases.includes(phase);
-        item.className = completed ? "complete" : phase === activePhase ? "active" : phase === errorPhase ? "error" : "";
+        const state = completed ? "complete" : phase === activePhase ? "active" : phase === errorPhase ? "error" : "";
+        item.className = state;
         item.querySelector("span").textContent = completed ? "✓" : String(index + 1);
+        renderPrecheckTimer(item, phase, state);
     });
 }
 
@@ -348,6 +422,7 @@ async function runPrecheck() {
     $("precheckResult").hidden = true;
     let activePhase = "polarization";
     const completedPhases = [];
+    precheckTimer.elapsed = {};
     try {
         await apiRequest("/api/precheck/start", {method: "POST"});
         updatePrecheckProgress(activePhase, completedPhases);

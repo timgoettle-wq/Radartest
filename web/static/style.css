@@ -190,6 +190,12 @@ table {width:100%;border-collapse:collapse;}th,td {padding:10px;border-bottom:1p
 .precheck-progress div {display:flex;align-items:center;gap:10px;padding:14px;border:1px solid var(--green-border);border-radius:9px;background:#f7faf8;color:#73827b;}
 .precheck-progress span {display:grid;place-items:center;width:27px;height:27px;flex:0 0 auto;border-radius:50%;background:#e3ebe7;font-size:12px;font-weight:700;}
 .precheck-progress strong {font-size:14px;}
+.precheck-progress div[data-precheck-phase] {flex-wrap:wrap;align-content:flex-start;}
+.precheck-timer {flex:1 0 100%;display:grid;gap:6px;margin:0;}
+.precheck-timer[hidden], .precheck-bar[hidden] {display:none!important;}
+.precheck-bar {display:block;height:6px;border-radius:999px;background:#E4ECE8;overflow:hidden;}
+.precheck-bar i {display:block;width:0;height:100%;border-radius:999px;background:var(--dekra-logo-green,#008143);transition:width .25s linear;}
+.precheck-timer small {font-size:12px;font-weight:400;color:var(--text-muted);font-variant-numeric:tabular-nums;}
 .precheck-progress div.active {border-color:var(--green-primary);background:#eef8f2;color:var(--green-dark);box-shadow:0 0 0 3px rgba(0,129,67,.1);}
 .precheck-progress div.active span {background:var(--green-primary);color:white;}
 .precheck-progress div.complete {color:var(--green-dark);}
